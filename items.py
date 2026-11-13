@@ -1,4 +1,4 @@
-# Master item catalog for Starlight RPG (EPIC RPG replica)
+# Master item catalog for Starlight RPG (EPIC RPG 1:1 Replica + Starlight Custom)
 
 SWORDS = {
     1: {"name": "basic sword", "price": 150, "at": 1},
@@ -19,6 +19,21 @@ HORSES = {
     2: {"name": "good horse", "price": 2500, "tier": 2},
     3: {"name": "great horse", "price": 10000, "tier": 3},
     4: {"name": "super horse", "price": 50000, "tier": 4},
+}
+
+MISC_ITEMS = {
+    "life potion": {"price": 25, "desc": "Restore your life with /heal"},
+    "dungeon key": {"price": 5000, "desc": "Required to enter the /dungeon"},
+    "lottery ticket": {"price": 50, "desc": "To join the /lottery"},
+    "seed": {"price": 4000, "desc": "Used to /farm"},
+    "common lootbox": {"price": 800, "desc": "Contains a few items, open with /open"},
+    "uncommon lootbox": {"price": 6000, "desc": "Contains some items, open with /open"},
+    "rare lootbox": {"price": 40000, "desc": "Contains many items, open with /open"},
+    "epic lootbox": {"price": 150000, "desc": "Contains a lot of items, open with /open"},
+    "edgy lootbox": {"price": 420666, "desc": "Contains A LOT of items, open with /open"},
+    "life boost a": {"price": 10000, "desc": "Provides +10 LIFE (temporary)"},
+    "life boost b": {"price": 100000, "desc": "Provides +25 LIFE (temporary)"},
+    "life boost c": {"price": 1000000, "desc": "Provides +50 LIFE (temporary)"}
 }
 
 BUNDLES = {
