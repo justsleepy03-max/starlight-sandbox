@@ -11,12 +11,16 @@ intents.message_content = True
 
 class StarlightBot(commands.Bot):
     async def setup_hook(self):
-        # Load the RPG cog
         await self.load_extension("rpg_cog")
-        # Force sync the command tree globally on startup
+        
+        # Instant guild sync using your server ID
+        TEST_GUILD_ID = 1570758404476244120  
+        guild = discord.Object(id=TEST_GUILD_ID)
+        
         try:
-            synced = await self.tree.sync()
-            print(f"Successfully synced {len(synced)} global commands!")
+            self.tree.copy_global_to(guild=guild)
+            synced = await self.tree.sync(guild=guild)
+            print(f"Successfully synced {len(synced)} commands instantly to your server!")
         except Exception as e:
             print(f"Failed to sync tree: {e}")
 
