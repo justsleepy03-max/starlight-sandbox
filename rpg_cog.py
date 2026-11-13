@@ -8,24 +8,6 @@ class RpgCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    async def cog_load(self):
-        # Automatically sync global commands when the cog loads
-        try:
-            synced = await self.bot.tree.sync()
-            print(f"Successfully synced {len(synced)} global commands from rpg_cog!")
-        except Exception as e:
-            print(f"Failed to sync command tree: {e}")
-
-    # Manual prefix sync command in case global sync is delayed by Discord
-    @commands.command(name="sync")
-    @commands.is_owner()
-    async def manual_sync(self, ctx):
-        try:
-            synced = await self.bot.tree.sync()
-            await ctx.send(f"🔄 Successfully force-synced {len(synced)} slash commands globally!")
-        except Exception as e:
-            await ctx.send(f"❌ Failed to sync: {e}")
-
     @discord.app_commands.command(name="ping", description="Test if the RPG cog is working.")
     async def ping(self, interaction: discord.Interaction):
         await interaction.response.send_message("🏓 Pong! Starlight RPG cog is active and modular!")
@@ -65,6 +47,23 @@ class RpgCog(commands.Cog):
         embed.add_field(name="REWARDS", value=f"🪙 Coins: +{earned_coins}\n⭐ XP: +{earned_xp}{level_up_msg}", inline=False)
         await interaction.response.send_message(embed=embed)
 
+    @discord.app_commands.command(name="adventure", description="Embark on an epic adventure in your current area!")
+    async def adventure(self, interaction: discord.Interaction):
+        uid = str(interaction.user.id)
+        p = get_player(uid)
+        area = p.get("area", 1)
+        
+        earned_coins = random.randint(50, 120) * area
+        earned_xp = random.randint(40, 90) * area
+        
+        p["wallet"] += earned_coins
+        p["xp"] += earned_xp
+        update_player(uid, p)
+        
+        embed = discord.Embed(title="🗺️ Epic Adventure", description=f"You adventured deep into the wilderness of Area {area} and triumphed over a miniboss!", color=discord.Color.orange())
+        embed.add_field(name="REWARDS", value=f"🪙 Coins: +{earned_coins}\n⭐ XP: +{earned_xp}", inline=False)
+        await interaction.response.send_message(embed=embed)
+
     @discord.app_commands.command(name="inventory", description="Check your items, materials, and Starlight bundles.")
     async def inventory(self, interaction: discord.Interaction):
         uid = str(interaction.user.id)
@@ -73,7 +72,7 @@ class RpgCog(commands.Cog):
         
         embed = discord.Embed(title=f"🎒 {interaction.user.display_name}'s Inventory", color=discord.Color.gold())
         if not inv:
-            embed.description = "Your inventory is currently empty! Visit the `/shop` or use working commands to gather items."
+            embed.description = "Your inventory is currently empty! Use `/chop` or `/fish` to gather materials."
         else:
             inv_text = "\n".join([f"• **{item.title()}**: {qty}" for item, qty in inv.items()])
             embed.description = inv_text
@@ -101,6 +100,29 @@ class RpgCog(commands.Cog):
         update_player(uid, p)
         
         await interaction.response.send_message(f"🎣 You cast your line and caught **{fish_gained}x Fish**!")
+
+    @discord.app_commands.command(name="craft", description="Craft weapons and armor using gathered materials.")
+    @discord.app_commands.describe(item_type="Choose what to craft (sword or armor)")
+    async def craft(self, interaction: discord.Interaction, item_type: str):
+        uid = str(interaction.user.id)
+        p = get_player(uid)
+        inv = p.get("inventory", {})
+        
+        item_type = item_type.lower()
+        if item_type not in ["sword", "armor"]:
+            await interaction.response.send_message("❌ You can only craft a `sword` or `armor` right now!", ephemeral=True)
+            return
+            
+        wood_required = 10
+        if inv.get("wood", 0) < wood_required:
+            await interaction.response.send_message(f"❌ Crafting a {item_type} requires **{wood_required}x Wood**. Use `/chop` to gather more!", ephemeral=True)
+            return
+            
+        inv["wood"] -= wood_required
+        p["inventory"] = inv
+        update_player(uid, p)
+        
+        await interaction.response.send_message(f"⚒️ Success! You crafted a brand new **Epic {item_type.title()}** using {wood_required}x Wood!")
 
 async def setup(bot):
     await bot.add_cog(RpgCog(bot))
