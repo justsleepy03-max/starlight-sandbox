@@ -347,3 +347,5 @@ class RpgCog(commands.Cog):
     @discord.app_commands.command(name="fish", description="Fish in the river.")
     async def fish(self, interaction: discord.Interaction):
         await self.execute_fish(interaction)
+async def setup(bot):
+    await bot.add_cog(RpgCog(bot))
