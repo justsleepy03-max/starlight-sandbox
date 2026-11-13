@@ -64,12 +64,12 @@ class RpgCog(commands.Cog):
         embed.add_field(name="REWARDS", value=f"🪙 Coins: +{earned_coins}\n⭐ XP: +{earned_xp}", inline=False)
         await interaction.response.send_message(embed=embed)
 
-    @discord.app_commands.command(name="shop", description="View the Epic RPG and Starlight shop catalog.")
+    @discord.app_commands.command(name="shop", description="View the Starlight RPG shop catalog.")
     @discord.app_commands.describe(page="Shop page number (1, 2, or 3 for Starlight Bundles)")
     async def shop(self, interaction: discord.Interaction, page: int = 1):
         if page == 1:
-            embed = discord.Embed(title="🛒 Shop - Page 1/3 (Epic RPG Essentials)", color=discord.Color.blue())
-            embed.description = f"**EPIC NPC:** Hey, {interaction.user.name}! Buy anything with `/buy [item]`"
+            embed = discord.Embed(title="🛒 Starlight Shop - Page 1/3 (Essentials)", color=discord.Color.blue())
+            embed.description = f"🌟 **STARLIGHT VENDOR:** Welcome, {interaction.user.name}! Browse our supplies and grab what you need with `/buy [item]`"
             
             items_text = (
                 "🧪 **life potion** | 🪙 25\n*Restore your life with /heal*\n\n"
@@ -83,8 +83,8 @@ class RpgCog(commands.Cog):
             embed.add_field(name="Catalog", value=items_text, inline=False)
             
         elif page == 2:
-            embed = discord.Embed(title="🛒 Shop - Page 2/3 (Lootboxes & Boosts)", color=discord.Color.blue())
-            embed.description = f"**EPIC NPC:** High-tier gear and boxes!"
+            embed = discord.Embed(title="🛒 Starlight Shop - Page 2/3 (Lootboxes & Boosts)", color=discord.Color.blue())
+            embed.description = f"🌟 **STARLIGHT VENDOR:** High-tier gear and mysterious boxes!"
             
             items_text = (
                 "📦 **common lootbox** | 🪙 800\n📦 **uncommon lootbox** | 🪙 6,000\n"
@@ -97,11 +97,12 @@ class RpgCog(commands.Cog):
             embed.add_field(name="Catalog", value=items_text, inline=False)
             
         else:
-            embed = discord.Embed(title="✨ Shop - Page 3/3 (Starlight Original Bundles)", color=discord.Color.purple())
+            embed = discord.Embed(title="✨ Starlight Shop - Page 3/3 (Exclusive Bundles)", color=discord.Color.purple())
+            embed.description = f"🌟 **STARLIGHT VENDOR:** Rare custom packages crafted for our adventurers!"
             bundles_text = "\n\n".join([f"🎁 **{b_name}** | 🪙 {data['price']}\n*Contents: {', '.join(data['contents'].keys())}*" for b_name, data in BUNDLES.items()])
             embed.add_field(name="Starlight Exclusive Bundles", value=bundles_text, inline=False)
             
-        embed.set_footer(text="Use /buy item:<name> to purchase anything!")
+        embed.set_footer(text="Use /buy item_name:<name> to purchase anything!")
         await interaction.response.send_message(embed=embed)
 
     @discord.app_commands.command(name="buy", description="Purchase items, gear, or Starlight bundles from the shop.")
@@ -113,10 +114,8 @@ class RpgCog(commands.Cog):
         item_name = item_name.lower()
         price = 0
         
-        # Check MISC_ITEMS
         if item_name in MISC_ITEMS:
             price = MISC_ITEMS[item_name]["price"]
-        # Check BUNDLES
         elif item_name in BUNDLES:
             price = BUNDLES[item_name]["price"]
         else:
