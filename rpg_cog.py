@@ -31,8 +31,75 @@ class RpgCog(commands.Cog):
         embed = discord.Embed(title=f"✨ {interaction.user.display_name}'s Profile", color=discord.Color.blurple())
         embed.add_field(name="PROGRESS", value=f"**Level:** {p['level']} ({p['xp']} XP)\n**Area:** {p['area']}", inline=False)
         embed.add_field(name="STATS", value=f"❤️ **HP:** {p['hp']}/{p['max_hp']}", inline=False)
-        embed.add_field(name="CURRENCY", value=f"🪙 **Wallet:** {p['wallet']}\n🏛️ **Bank:** {p['bank']}", inline=False)
+        embed.add_field(name="CURRENCY", value=f"🪙 **Wallet:** {p['wallet']:,}\n🏛️ **Bank:** {p['bank']:,}", inline=False)
         await interaction.response.send_message(embed=embed)
+
+    @discord.app_commands.command(name="bal", description="Check your wallet and bank coin balances.")
+    async def bal(self, interaction: discord.Interaction):
+        uid = str(interaction.user.id)
+        p = get_player(uid)
+        
+        embed = discord.Embed(title=f"🪙 {interaction.user.display_name}'s Balance", color=discord.Color.gold())
+        embed.add_field(name="Bank & Wallet", value=f"🪙 **Wallet:** {p['wallet']:,} coins\n🏛️ **Bank:** {p['bank']:,} coins", inline=False)
+        await interaction.response.send_message(embed=embed)
+
+    @discord.app_commands.command(name="deposit", description="Deposit coins from your wallet into the bank.")
+    @discord.app_commands.describe(amount="Amount to deposit (or type 'all')")
+    async def deposit(self, interaction: discord.Interaction, amount: str):
+        uid = str(interaction.user.id)
+        p = get_player(uid)
+        
+        if amount.lower() == "all":
+            dep_amount = p["wallet"]
+        else:
+            try:
+                dep_amount = int(amount)
+            except ValueError:
+                await interaction.response.send_message("❌ Please enter a valid number or 'all'.", ephemeral=True)
+                return
+
+        if dep_amount <= 0:
+            await interaction.response.send_message("❌ You can't deposit zero or negative coins.", ephemeral=True)
+            return
+
+        if p["wallet"] < dep_amount:
+            await interaction.response.send_message(f"❌ You don't have enough coins in your wallet! You have 🪙 {p['wallet']:,}.", ephemeral=True)
+            return
+
+        p["wallet"] -= dep_amount
+        p["bank"] += dep_amount
+        update_player(uid, p)
+
+        await interaction.response.send_message(f"🏛️ Successfully deposited **🪙 {dep_amount:,} coins** into your bank!")
+
+    @discord.app_commands.command(name="withdraw", description="Withdraw coins from your bank to your wallet.")
+    @discord.app_commands.describe(amount="Amount to withdraw (or type 'all')")
+    async def withdraw(self, interaction: discord.Interaction, amount: str):
+        uid = str(interaction.user.id)
+        p = get_player(uid)
+        
+        if amount.lower() == "all":
+            wit_amount = p["bank"]
+        else:
+            try:
+                wit_amount = int(amount)
+            except ValueError:
+                await interaction.response.send_message("❌ Please enter a valid number or 'all'.", ephemeral=True)
+                return
+
+        if wit_amount <= 0:
+            await interaction.response.send_message("❌ You can't withdraw zero or negative coins.", ephemeral=True)
+            return
+
+        if p["bank"] < wit_amount:
+            await interaction.response.send_message(f"❌ You don't have that many coins in your bank! Your bank holds 🪙 {p['bank']:,}.", ephemeral=True)
+            return
+
+        p["bank"] -= wit_amount
+        p["wallet"] += wit_amount
+        update_player(uid, p)
+
+        await interaction.response.send_message(f"🪙 Successfully withdrew **🪙 {wit_amount:,} coins** into your wallet!")
 
     @discord.app_commands.command(name="hunt", description="Hunt for monsters to gain XP and coins!")
     async def hunt(self, interaction: discord.Interaction):
@@ -136,14 +203,14 @@ class RpgCog(commands.Cog):
             return
             
         if p["wallet"] < price:
-            await interaction.response.send_message(f"❌ You need 🪙 {price} coins to buy **{item_name}**, but you only have 🪙 {p['wallet']}.", ephemeral=True)
+            await interaction.response.send_message(f"❌ You need 🪙 {price} coins to buy **{item_name}**, but you only have 🪙 {p['wallet']:,}.", ephemeral=True)
             return
             
         p["wallet"] -= price
         p["inventory"][item_name] = p["inventory"].get(item_name, 0) + 1
         update_player(uid, p)
         
-        await interaction.response.send_message(f"🎉 Successfully purchased **{item_name.title()}** for 🪙 {price} coins!")
+        await interaction.response.send_message(f"🎉 Successfully purchased **{item_name.title()}** for 🪙 {price:,} coins!")
 
     @discord.app_commands.command(name="pets", description="View your active Starlight companion pets.")
     async def pets(self, interaction: discord.Interaction):
