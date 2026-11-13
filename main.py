@@ -19,17 +19,87 @@ MOBS = {
     2: ["Goblin Warrior", "Desert Bandit", "Cursed Skeleton", "Orc Raider"]
 }
 
+# Shop items catalog
+SHOP_ITEMS = {
+    "life potion": {"price": 25, "type": "heal", "desc": "Restore your life with /heal"},
+    "basic armor": {"price": 200, "type": "armor", "desc": "[+2 def] An ugly armor made of wood"},
+    "basic sword": {"price": 150, "type": "sword", "desc": "[+1 at] Better than nothing huh?"},
+    "basic horse": {"price": 500, "type": "horse", "desc": "[tier I] Just a normie horse"},
+    "dungeon key": {"price": 5000, "type": "item", "desc": "You need this key to enter the /dungeon"},
+    "lottery ticket": {"price": 50, "type": "item", "desc": "To join the /lottery"},
+    "seed": {"price": 4000, "type": "item", "desc": "Used to /farm"},
+    "common lootbox": {"price": 800, "type": "lootbox", "desc": "It contains a few items, open with /open"},
+    "uncommon lootbox": {"price": 6000, "type": "lootbox", "desc": "It contains some items, open with /open"},
+    "rare lootbox": {"price": 40000, "type": "lootbox", "desc": "It contains many items, open with /open"},
+    "epic lootbox": {"price": 150000, "type": "lootbox", "desc": "It contains a lot of items, open with /open"},
+    "edgy lootbox": {"price": 420666, "type": "lootbox", "desc": "It contains a LOT of items, open with /open"},
+    "life boost a": {"price": 10000, "type": "boost", "desc": "Provides +10 LIFE, temporary & not stackable"},
+    "life boost b": {"price": 100000, "type": "boost", "desc": "Provides +25 LIFE, temporary & not stackable"},
+    "life boost c": {"price": 1000000, "type": "boost", "desc": "Provides +50 LIFE, temporary & not stackable"},
+    # Starlight Bundles
+    "gatherer's pack": {"price": 400, "type": "bundle", "desc": "Contains 10x Starblossom Herbs & 5x Starlight Bulbs."},
+    "miner's crate": {"price": 600, "type": "bundle", "desc": "Contains 10x Iron Ore & 3x Celestial Ore."},
+    "hunter's cache": {"price": 750, "type": "bundle", "desc": "Contains 5x Goblin Fangs, 5x Slime Jellies & 2x Shadow Pelts."},
+    "cosmic catalyst bundle": {"price": 1500, "type": "bundle", "desc": "Ultra Rare! Contains 1x Dragon Scale, 1x Serpentarius & +250 Stardust."}
+}
+
+class ShopPaginator(discord.ui.View):
+    def __init__(self, user_name):
+        super().__init__(timeout=60)
+        self.user_name = user_name
+        self.current_page = 1
+
+    def create_embed(self):
+        embed = discord.Embed(color=discord.Color.gold())
+        if self.current_page == 1:
+            embed.title = "Shop - Page 1/2"
+            embed.description = f"**EPIC NPC:** Hey, {self.user_name}! Buy anything with `/buy [item]`\n"
+            embed.add_field(name="Gear & Essentials", value=(
+                "🧪 **life potion** | 25 🪙\n*Restore your life with /heal*\n"
+                "📦 **basic armor** | 200 🪙\n*[+2 def] An ugly armor made of wood*\n"
+                "🗡️ **basic sword** | 150 🪙\n*[+1 at] Better than nothing huh?*\n"
+                "🐎 **basic horse** | 500 🪙\n*[tier I] Just a normie horse*\n"
+                "🔑 **dungeon key** | 5,000 🪙\n*You need this key to enter the /dungeon*\n"
+                "🎟️ **lottery ticket** | 50 🪙\n*To join the /lottery*\n"
+                "🌱 **seed** | 4,000 🪙\n*Used to /farm*"
+            ), inline=False)
+        else:
+            embed.title = "Shop - Page 2/2 & Starlight Bundles"
+            embed.description = f"**EPIC NPC:** Hey, {self.user_name}! Buy anything with `/buy [item]`\n"
+            embed.add_field(name="Lootboxes & Boosts", value=(
+                "📦 **common lootbox** | 800 🪙\n📦 **uncommon lootbox** | 6,000 🪙\n"
+                "📦 **rare lootbox** | 40,000 🪙\n📦 **epic lootbox** | 150,000 🪙\n"
+                "📦 **edgy lootbox** | 420,666 🪙\n✨ **life boost a** | 10,000 🪙 (+10 LIFE)\n"
+                "✨ **life boost b** | 100,000 🪙 (+25 LIFE)\n✨ **life boost c** | 1,000,000 🪙 (+50 LIFE)"
+            ), inline=False)
+            embed.add_field(name="✨ Starlight Bundles", value=(
+                "📦 **Gatherer's Pack** | 400 ✨\n*Contains 10x Starblossom Herbs & 5x Starlight Bulbs.*\n"
+                "📦 **Miner's Crate** | 600 ✨\n*Contains 10x Iron Ore & 3x Celestial Ore.*\n"
+                "📦 **Hunter's Cache** | 750 ✨\n*Contains 5x Goblin Fangs, 5x Slime Jellies & 2x Shadow Pelts.*\n"
+                "📦 **Cosmic Catalyst Bundle** | 1500 ✨\n*Ultra Rare! Contains 1x Dragon Scale, 1x Serpentarius & +250 Stardust.*"
+            ), inline=False)
+        return embed
+
+    @discord.ui.button(label="◀", style=discord.ButtonStyle.blurple)
+    async def prev_page(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.current_page = 1
+        await interaction.response.edit_message(embed=self.create_embed(), view=self)
+
+    @discord.ui.button(label="▶", style=discord.ButtonStyle.blurple)
+    async def next_page(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.current_page = 2
+        await interaction.response.edit_message(embed=self.create_embed(), view=self)
+
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user.name} (ID: {bot.user.id})")
-    print("RvgRpg sandbox is online and fully loaded!")
+    print("RvgRpg sandbox is online with full shop and bundles!")
     try:
         synced = await bot.tree.sync()
         print(f"Synced {len(synced)} command(s).")
     except Exception as e:
         print(e)
 
-# --- PROFILE & STATS ---
 @bot.tree.command(name="profile", description="Check your RPG character stats and progress.")
 async def profile(interaction: discord.Interaction):
     p = get_player(interaction.user.id)
@@ -39,7 +109,6 @@ async def profile(interaction: discord.Interaction):
     embed.add_field(name="MONEY", value=f"✨ **Wallet:** {p['wallet']}\n🏛️ **Bank:** {p['bank']}", inline=False)
     await interaction.response.send_message(embed=embed)
 
-# --- FIGHTING COMMANDS ---
 @bot.tree.command(name="hunt", description="Hunt for monsters to gain XP and coins!")
 async def hunt(interaction: discord.Interaction):
     uid = str(interaction.user.id)
@@ -65,30 +134,31 @@ async def hunt(interaction: discord.Interaction):
     embed.add_field(name="REWARDS", value=f"✨ Coins: +{earned_coins}\n⭐ XP: +{earned_xp}{level_up}", inline=False)
     await interaction.response.send_message(embed=embed)
 
-@bot.tree.command(name="adventure", description="Go on an adventure for bigger rewards and risks!")
-async def adventure(interaction: discord.Interaction):
-    uid = str(interaction.user.id)
-    p = get_player(uid)
-    coins = random.randint(50, 120) * p['area']
-    p['wallet'] += coins
-    update_player(uid, p)
-    await interaction.response.send_message(f"🌲 You went on an epic adventure and brought back **{coins} coins**!")
-
-@bot.tree.command(name="heal", description="Heal your HP back to maximum.")
-async def heal(interaction: discord.Interaction):
-    uid = str(interaction.user.id)
-    p = get_player(uid)
-    p['hp'] = p['max_hp']
-    update_player(uid, p)
-    await interaction.response.send_message(f"❤️ You healed up! Your HP is fully restored to **{p['max_hp']}**.")
-
-# --- ECONOMY COMMANDS ---
-@bot.tree.command(name="shop", description="Open the item shop.")
+@bot.tree.command(name="shop", description="Open the item shop with pages.")
 async def shop(interaction: discord.Interaction):
-    embed = discord.Embed(title="🛒 Starlight RPG Shop", description="Available gear upgrades for Area 1:", color=discord.Color.gold())
-    embed.add_field(name="Swords", value="• Wooden Sword - 500 coins\n• Stone Sword - 1500 coins", inline=False)
-    embed.add_field(name="Armor", value="• Wooden Armor - 500 coins\n• Chainmail - 1500 coins", inline=False)
-    await interaction.response.send_message(embed=embed)
+    view = ShopPaginator(interaction.user.display_name)
+    await interaction.response.send_message(embed=view.create_embed(), view=view)
+
+@bot.tree.command(name="buy", description="Buy an item from the shop.")
+async def buy(interaction: discord.Interaction, item: str):
+    uid = str(interaction.user.id)
+    p = get_player(uid)
+    item_key = item.lower()
+    
+    if item_key not in SHOP_ITEMS:
+        await interaction.response.send_message(f"❌ Item **'{item}'** not found in the shop!", ephemeral=True)
+        return
+        
+    shop_item = SHOP_ITEMS[item_key]
+    if p["wallet"] < shop_item["price"]:
+        await interaction.response.send_message(f"❌ You don't have enough coins! This costs **{shop_item['price']} 🪙**.", ephemeral=True)
+        return
+        
+    p["wallet"] -= shop_item["price"]
+    p["inventory"][item_key] = p["inventory"].get(item_key, 0) + 1
+    update_player(uid, p)
+    
+    await interaction.response.send_message(f"🛒 You successfully bought **1x {item}** for **{shop_item['price']} 🪙**!")
 
 @bot.tree.command(name="deposit", description="Deposit coins into your bank.")
 async def deposit(interaction: discord.Interaction, amount: int):
@@ -102,21 +172,11 @@ async def deposit(interaction: discord.Interaction, amount: int):
     update_player(uid, p)
     await interaction.response.send_message(f"🏛️ Successfully deposited **{amount} coins** into your bank.")
 
-# --- WORKING COMMANDS ---
-@bot.tree.command(name="chop", description="Chop wood to gather materials.")
-async def chop(interaction: discord.Interaction):
-    await interaction.response.send_message("🪵 You swung your axe and chopped some wood!")
-
-@bot.tree.command(name="fish", description="Fish in local waters for catches.")
-async def fish(interaction: discord.Interaction):
-    await interaction.response.send_message("🎣 You cast your line and caught a fish!")
-
-# --- REWARDS COMMANDS ---
 @bot.tree.command(name="daily", description="Claim your daily reward bonus.")
 async def daily(interaction: discord.Interaction):
     uid = str(interaction.user.id)
     p = get_player(uid)
-    bonus = 200
+    bonus = 500
     p['wallet'] += bonus
     update_player(uid, p)
     await interaction.response.send_message(f"🎁 You claimed your daily reward of **{bonus} coins**!")
