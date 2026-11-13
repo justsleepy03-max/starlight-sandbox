@@ -64,7 +64,43 @@ class RpgCog(commands.Cog):
         embed.add_field(name="REWARDS", value=f"🪙 Coins: +{earned_coins}\n⭐ XP: +{earned_xp}", inline=False)
         await interaction.response.send_message(embed=embed)
 
-    @discord.app_commands.command(name="inventory", description="Check your items, materials, and Starlight bundles.")
+    @discord.app_commands.command(name="shop", description="View available gear and items in the shop.")
+    async def shop(self, interaction: discord.Interaction):
+        embed = discord.Embed(title="🛒 Starlight RPG Shop", color=discord.Color.blue())
+        
+        swords_list = "\n".join([f"Tier {tid}: **{item['name'].title()}** - 🪙 {item['price']}" for tid, item in SWORDS.items()])
+        armors_list = "\n".join([f"Tier {tid}: **{item['name'].title()}** - 🪙 {item['price']}" for tid, item in ARMORS.items()])
+        
+        embed.add_field(name="⚔️ Swords", value=swords_list, inline=False)
+        embed.add_field(name="🛡️ Armor", value=armors_list, inline=False)
+        embed.set_footer(text="Use /buy <sword/armor> <tier> to purchase gear!")
+        await interaction.response.send_message(embed=embed)
+
+    @discord.app_commands.command(name="buy", description="Purchase items or gear from the shop.")
+    @discord.app_commands.describe(category="Choose sword or armor", tier="The tier number of the item")
+    async def buy(self, interaction: discord.Interaction, category: str, tier: int):
+        uid = str(interaction.user.id)
+        p = get_player(uid)
+        
+        category = category.lower()
+        catalog = SWORDS if category == "sword" else ARMORS if category == "armor" else None
+        
+        if not catalog or tier not in catalog:
+            await interaction.response.send_message("❌ Invalid category or tier! Choose `sword` or `armor` with a valid tier number.", ephemeral=True)
+            return
+            
+        item = catalog[tier]
+        if p["wallet"] < item["price"]:
+            await interaction.response.send_message(f"❌ You need 🪙 {item['price']} coins to buy the **{item['name']}**, but you only have 🪙 {p['wallet']}.", ephemeral=True)
+            return
+            
+        p["wallet"] -= item["price"]
+        p["inventory"][item["name"]] = p["inventory"].get(item["name"], 0) + 1
+        update_player(uid, p)
+        
+        await interaction.response.send_message(f"🎉 Successfully purchased **{item['name'].title()}** for 🪙 {item['price']} coins!")
+
+    @discord.app_commands.command(name="inventory", description="Check your items, materials, and gear.")
     async def inventory(self, interaction: discord.Interaction):
         uid = str(interaction.user.id)
         p = get_player(uid)
@@ -72,7 +108,7 @@ class RpgCog(commands.Cog):
         
         embed = discord.Embed(title=f"🎒 {interaction.user.display_name}'s Inventory", color=discord.Color.gold())
         if not inv:
-            embed.description = "Your inventory is currently empty! Use `/chop` or `/fish` to gather materials."
+            embed.description = "Your inventory is empty! Use `/chop`, `/fish`, or visit the `/shop`."
         else:
             inv_text = "\n".join([f"• **{item.title()}**: {qty}" for item, qty in inv.items()])
             embed.description = inv_text
@@ -101,28 +137,26 @@ class RpgCog(commands.Cog):
         
         await interaction.response.send_message(f"🎣 You cast your line and caught **{fish_gained}x Fish**!")
 
-    @discord.app_commands.command(name="craft", description="Craft weapons and armor using gathered materials.")
-    @discord.app_commands.describe(item_type="Choose what to craft (sword or armor)")
-    async def craft(self, interaction: discord.Interaction, item_type: str):
+    @discord.app_commands.command(name="daily", description="Claim your daily rewards!")
+    async def daily(self, interaction: discord.Interaction):
         uid = str(interaction.user.id)
         p = get_player(uid)
-        inv = p.get("inventory", {})
         
-        item_type = item_type.lower()
-        if item_type not in ["sword", "armor"]:
-            await interaction.response.send_message("❌ You can only craft a `sword` or `armor` right now!", ephemeral=True)
-            return
-            
-        wood_required = 10
-        if inv.get("wood", 0) < wood_required:
-            await interaction.response.send_message(f"❌ Crafting a {item_type} requires **{wood_required}x Wood**. Use `/chop` to gather more!", ephemeral=True)
-            return
-            
-        inv["wood"] -= wood_required
-        p["inventory"] = inv
+        bonus_coins = 500
+        p["wallet"] += bonus_coins
         update_player(uid, p)
         
-        await interaction.response.send_message(f"⚒️ Success! You crafted a brand new **Epic {item_type.title()}** using {wood_required}x Wood!")
+        await interaction.response.send_message(f"🎁 You claimed your daily reward and received **🪙 {bonus_coins} coins**!")
+
+    @discord.app_commands.command(name="heal", description="Heal your HP back to maximum.")
+    async def heal(self, interaction: discord.Interaction):
+        uid = str(interaction.user.id)
+        p = get_player(uid)
+        
+        p["hp"] = p["max_hp"]
+        update_player(uid, p)
+        
+        await interaction.response.send_message(f"❤️ You used a healing potion and restored your HP to **{p['max_hp']}/{p['max_hp']}**!")
 
 async def setup(bot):
     await bot.add_cog(RpgCog(bot))
