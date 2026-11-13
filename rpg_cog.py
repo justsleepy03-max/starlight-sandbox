@@ -8,6 +8,7 @@ QUEST_POOL = [
     {"id": "hunt_monsters", "title": "Monster Slayer", "desc": "Hunt 5 times in the wild", "target": 5, "type": "hunt", "reward_coins": 1000, "reward_xp": 500},
     {"id": "gather_wood", "title": "Lumberjack Duty", "desc": "Collect 15 Wood", "target": 15, "type": "chop", "reward_coins": 800, "reward_xp": 400},
     {"id": "catch_fish", "title": "Master Angler", "desc": "Catch 10 Fish", "target": 10, "type": "fish", "reward_coins": 800, "reward_xp": 400},
+    {"id": "mine_ore", "title": "Master Miner", "desc": "Mine 10 Iron Ore", "target": 10, "type": "mine", "reward_coins": 1200, "reward_xp": 600},
 ]
 
 AREA_UNLOCKS = {
@@ -15,14 +16,14 @@ AREA_UNLOCKS = {
     2: "/enchant, /area, /training",
     3: "/axe, /net, /pickup",
     4: "/ladder, /guild, /farm",
-    5: "/mine, /multidice, /cook",
+    5: "/mine, /multidice, /cook, /casino",
     6: "/bowsaw, /boat, /pickaxe",
     7: "/refine, /big arena, /alchemy",
     8: "/tractor, /wheel",
     9: "/chainsaw, /bigboat",
     10: "/drill, /minintboss",
     11: "/time travel, /forge, /greenhouse",
-    12: "/dynamite, /pets, /ultraining, /badge",
+    12: "/dynamite, /pets, /petadventure, /ultraining, /badge",
     13: "/transmute, /hunt hardmode",
     14: "/adventure hardmode, /big dice",
     15: "/time jump, /transcend"
@@ -54,23 +55,26 @@ class RpgCog(commands.Cog):
         await interaction.response.send_message("🏓 Pong! Starlight RPG engine is active!")
 
     @discord.app_commands.command(name="help", description="View all available Starlight RPG commands and categories.")
-    @discord.app_commands.describe(category="Filter by category (general, rpg, crafting, pets)")
+    @discord.app_commands.describe(category="Filter by category (general, rpg, crafting, pets, casino)")
     async def help_command(self, interaction: discord.Interaction, category: str = None):
         category = category.lower() if category else None
         
         if category == "general":
             embed = discord.Embed(title="❓ Starlight Help - General & Economy", color=discord.Color.blue())
-            embed.add_field(name="Economy & Stats", value="`/profile` - View your level, XP, and HP\n`/bal` - Check your wallet and bank balances\n`/deposit` - Deposit coins into your bank\n`/withdraw` - Withdraw coins to your wallet\n`/daily` - Claim your daily coin rewards\n`/shop` - Browse the 3-page shop catalog\n`/buy` - Purchase items, boxes, or bundles", inline=False)
+            embed.add_field(name="Economy & Stats", value="`/profile` - Stats\n`/bal` - Balances\n`/deposit` / `/withdraw` - Bank\n`/daily` - Daily rewards\n`/shop` & `/buy` - Vendor", inline=False)
         elif category == "rpg":
             embed = discord.Embed(title="❓ Starlight Help - RPG & Exploration", color=discord.Color.green())
-            embed.add_field(name="Combat & Quests", value="`/hunt` - Hunt monsters for XP and coins\n`/adventure` - Embark on high-tier adventures\n`/area` - View area unlocks and travel\n`/quest` - Check or take active quests\n`/claimquest` - Claim completed quest rewards\n`/heal` - Restore your HP with potions", inline=False)
+            embed.add_field(name="Combat & Quests", value="`/hunt` - Hunt\n`/adventure` - Adventure\n`/area` - Areas\n`/quest` & `/claimquest` - Quests\n`/heal` - Heal HP", inline=False)
+        elif category == "casino":
+            embed = discord.Embed(title="🎰 Starlight Help - Mini Casino (Area 5+)", color=discord.Color.gold())
+            embed.add_field(name="Games of Chance", value="`/coinflip` - Double or nothing coin flip\n`/multidice` - Roll high-stakes dice against the bot\n`/slots` - Spin slot machines for massive multipliers", inline=False)
         elif category in ["crafting", "pets"]:
             embed = discord.Embed(title="❓ Starlight Help - Crafting & Pets", color=discord.Color.purple())
-            embed.add_field(name="Gathering & Companions", value="`/chop` - Chop wood in the forest\n`/fish` - Fish in the river\n`/inventory` - Check your items and materials\n`/hatch` - Hatch purchased eggs into pets\n`/pets` - View your active companion sanctuary", inline=False)
+            embed.add_field(name="Work & Companions", value="`/chop`, `/fish`, `/mine`, `/farm`, `/cook`\n`/hatch`, `/pets`, `/petadventure` (Area 12+)\n`/inventory`", inline=False)
         else:
             embed = discord.Embed(title="✨ Starlight RPG - Command Directory", color=discord.Color.gold())
-            embed.description = "Here are all available command categories. Use `/help category:<name>` for specific lists!"
-            embed.add_field(name="📂 Categories", value="• **general** (Profile, Bal, Deposit, Withdraw, Daily, Shop, Buy)\n• **rpg** (Hunt, Adventure, Area, Quest, Claimquest, Heal)\n• **crafting** (Chop, Fish, Inventory)\n• **pets** (Hatch, Pets)", inline=False)
+            embed.description = "Use `/help category:<name>` for specific lists (`general`, `rpg`, `casino`, `crafting`, `pets`)!"
+            embed.add_field(name="📂 Categories", value="• **general**\n• **rpg**\n• **casino**\n• **crafting**\n• **pets**", inline=False)
             embed.set_footer(text="Starlight Sandbox • Built for Epic RPG 1:1 Parity")
 
         await interaction.response.send_message(embed=embed)
@@ -79,7 +83,6 @@ class RpgCog(commands.Cog):
     async def profile(self, interaction: discord.Interaction):
         uid = str(interaction.user.id)
         p = get_player(uid)
-        
         embed = discord.Embed(title=f"✨ {interaction.user.display_name}'s Profile", color=discord.Color.blurple())
         embed.add_field(name="PROGRESS", value=f"**Level:** {p['level']} ({p['xp']}/{p['level'] * 250} XP)\n**Area:** {p['area']}", inline=False)
         embed.add_field(name="STATS", value=f"❤️ **HP:** {p['hp']}/{p['max_hp']}", inline=False)
@@ -90,7 +93,6 @@ class RpgCog(commands.Cog):
     async def bal(self, interaction: discord.Interaction):
         uid = str(interaction.user.id)
         p = get_player(uid)
-        
         embed = discord.Embed(title=f"🪙 {interaction.user.display_name}'s Balance", color=discord.Color.gold())
         embed.add_field(name="Bank & Wallet", value=f"🪙 **Wallet:** {p['wallet']:,} coins\n🏛️ **Bank:** {p['bank']:,} coins", inline=False)
         await interaction.response.send_message(embed=embed)
@@ -100,12 +102,10 @@ class RpgCog(commands.Cog):
     async def deposit(self, interaction: discord.Interaction, amount: str):
         uid = str(interaction.user.id)
         p = get_player(uid)
-        
         dep_amount = p["wallet"] if amount.lower() == "all" else int(amount)
         if dep_amount <= 0 or p["wallet"] < dep_amount:
             await interaction.response.send_message("❌ Invalid deposit amount or insufficient funds.", ephemeral=True)
             return
-
         p["wallet"] -= dep_amount
         p["bank"] += dep_amount
         update_player(uid, p)
@@ -116,12 +116,10 @@ class RpgCog(commands.Cog):
     async def withdraw(self, interaction: discord.Interaction, amount: str):
         uid = str(interaction.user.id)
         p = get_player(uid)
-        
         wit_amount = p["bank"] if amount.lower() == "all" else int(amount)
         if wit_amount <= 0 or p["bank"] < wit_amount:
             await interaction.response.send_message("❌ Invalid withdrawal amount or insufficient bank funds.", ephemeral=True)
             return
-
         p["bank"] -= wit_amount
         p["wallet"] += wit_amount
         update_player(uid, p)
@@ -159,14 +157,11 @@ class RpgCog(commands.Cog):
         uid = str(interaction.user.id)
         p = get_player(uid)
         area = p.get("area", 1)
-        
         earned_coins = random.randint(20, 45) * area
         earned_xp = random.randint(15, 30) * area
-        
         p["wallet"] += earned_coins
         p["xp"] += earned_xp
         self._update_quest_progress(p, "hunt", 1)
-        
         level_msg = self._check_level_up(p)
         update_player(uid, p)
         
@@ -179,13 +174,10 @@ class RpgCog(commands.Cog):
         uid = str(interaction.user.id)
         p = get_player(uid)
         area = p.get("area", 1)
-        
         earned_coins = random.randint(80, 180) * area
         earned_xp = random.randint(60, 130) * area
-        
         p["wallet"] += earned_coins
         p["xp"] += earned_xp
-        
         level_msg = self._check_level_up(p)
         update_player(uid, p)
         
@@ -199,30 +191,17 @@ class RpgCog(commands.Cog):
         if page == 1:
             embed = discord.Embed(title="🛒 Starlight Shop - Page 1/3 (Essentials)", color=discord.Color.blue())
             embed.description = "🌟 **STARLIGHT VENDOR:** Browse essential gear and supplies."
-            items_text = (
-                "🧪 **life potion** | 🪙 25\n"
-                "🛡️ **basic armor** | 🪙 200\n"
-                "⚔️ **basic sword** | 🪙 150\n"
-                "🐎 **basic horse** | 🪙 500\n"
-                "🔑 **dungeon key** | 🪙 5,000\n"
-                "🎫 **lottery ticket** | 🪙 50\n"
-                "🌱 **seed** | 🪙 4,000"
-            )
+            items_text = "🧪 **life potion** | 🪙 25\n🛡️ **basic armor** | 🪙 200\n⚔️ **basic sword** | 🪙 150\n🐎 **basic horse** | 🪙 500\n🔑 **dungeon key** | 🪙 5,000\n🌱 **seed** | 🪙 4,000"
             embed.add_field(name="Catalog", value=items_text, inline=False)
         elif page == 2:
             embed = discord.Embed(title="🛒 Starlight Shop - Page 2/3 (Lootboxes & Eggs)", color=discord.Color.blue())
             embed.description = "🌟 **STARLIGHT VENDOR:** Companion eggs and boxes! Use `/hatch` after buying an egg."
-            items_text = (
-                "📦 **common lootbox** | 🪙 800\n📦 **uncommon lootbox** | 🪙 6,000\n"
-                "📦 **rare lootbox** | 🪙 40,000\n📦 **epic lootbox** | 🪙 150,000\n\n"
-                "🥚 **common egg** | 🪙 1,000\n🥚 **golden egg** | 🪙 15,000\n🥚 **celestial egg** | 🪙 75,000"
-            )
+            items_text = "📦 **common lootbox** | 🪙 800\n📦 **uncommon lootbox** | 🪙 6,000\n📦 **rare lootbox** | 🪙 40,000\n📦 **epic lootbox** | 🪙 150,000\n\n🥚 **common egg** | 🪙 1,000\n🥚 **golden egg** | 🪙 15,000\n🥚 **celestial egg** | 🪙 75,000"
             embed.add_field(name="Catalog", value=items_text, inline=False)
         else:
             embed = discord.Embed(title="✨ Starlight Shop - Page 3/3 (Exclusive Bundles)", color=discord.Color.purple())
             bundles_text = "\n\n".join([f"🎁 **{b_name}** | 🪙 {data['price']}\n*Contents: {', '.join(data['contents'].keys())}*" for b_name, data in BUNDLES.items()])
             embed.add_field(name="Starlight Exclusive Bundles", value=bundles_text, inline=False)
-            
         embed.set_footer(text="Use /buy item_name:<name> to purchase anything!")
         await interaction.response.send_message(embed=embed)
 
@@ -232,16 +211,13 @@ class RpgCog(commands.Cog):
         uid = str(interaction.user.id)
         p = get_player(uid)
         item_name = item_name.lower()
-        
         price = MISC_ITEMS.get(item_name, {}).get("price") or PET_EGGS.get(item_name, {}).get("price") or BUNDLES.get(item_name, {}).get("price")
         if not price:
             await interaction.response.send_message(f"❌ Unknown item `{item_name}`! Check `/shop`.", ephemeral=True)
             return
-            
         if p["wallet"] < price:
             await interaction.response.send_message(f"❌ You need 🪙 {price:,} coins, but your wallet has 🪙 {p['wallet']:,}.", ephemeral=True)
             return
-            
         p["wallet"] -= price
         p["inventory"][item_name] = p["inventory"].get(item_name, 0) + 1
         update_player(uid, p)
@@ -253,45 +229,73 @@ class RpgCog(commands.Cog):
         uid = str(interaction.user.id)
         p = get_player(uid)
         egg_name = egg_name.lower()
-        
         if egg_name not in ["common egg", "golden egg", "celestial egg"]:
-            await interaction.response.send_message("❌ Invalid egg type! Choose from `common egg`, `golden egg`, or `celestial egg`.", ephemeral=True)
+            await interaction.response.send_message("❌ Invalid egg type!", ephemeral=True)
             return
-            
         if p.get("inventory", {}).get(egg_name, 0) < 1:
-            await interaction.response.send_message(f"❌ You don't have a **{egg_name}** in your inventory! Buy one from `/shop` page 2.", ephemeral=True)
+            await interaction.response.send_message(f"❌ You don't have a **{egg_name}** in your inventory!", ephemeral=True)
             return
-            
         p["inventory"][egg_name] -= 1
         if p["inventory"][egg_name] <= 0:
             del p["inventory"][egg_name]
-            
         if "pets" not in p:
             p["pets"] = []
-            
-        pet_names = ["Starlight Fox", "Nebula Slime", "Cosmic Drake", "Astral Pup", "Void Cat"]
-        hatched_name = random.choice(pet_names)
-        new_pet = {"name": hatched_name, "level": 1, "type": egg_name}
-        p["pets"].append(new_pet)
+        hatched_name = random.choice(["Starlight Fox", "Nebula Slime", "Cosmic Drake", "Astral Pup", "Void Cat"])
+        p["pets"].append({"name": hatched_name, "level": 1, "type": egg_name})
         update_player(uid, p)
-        
-        embed = discord.Embed(title="🥚 Pet Hatched Successfully!", description=f"The egg cracked open, and out popped a brand new **{hatched_name}** ({egg_name.title()})!", color=discord.Color.green())
-        embed.set_footer(text="Use /pets to view your active companions in your sanctuary!")
-        await interaction.response.send_message(embed=embed)
+        await interaction.response.send_message(f"🥚 Pet Hatched! Out popped a brand new **{hatched_name}** ({egg_name.title()})!")
 
     @discord.app_commands.command(name="pets", description="View your active Starlight companion pets.")
     async def pets(self, interaction: discord.Interaction):
         uid = str(interaction.user.id)
         p = get_player(uid)
         user_pets = p.get("pets", [])
-        
         embed = discord.Embed(title=f"🐾 {interaction.user.display_name}'s Pet Sanctuary", color=discord.Color.green())
         if not user_pets:
             embed.description = "You don't have any pets yet! Buy an egg from `/shop` page 2 and use `/hatch`."
         else:
-            pets_list = "\n".join([f"• **{pet['name']}** (Level {pet['level']} - {pet['type'].title()})" for pet in user_pets])
-            embed.description = pets_list
+            embed.description = "\n".join([f"• **{pet['name']}** (Level {pet['level']} - {pet['type'].title()})" for pet in user_pets])
+        await interaction.response.send_message(embed=embed)
+
+    @discord.app_commands.command(name="petadventure", description="Send your companion pets on an adventure to gather loot and XP (Unlocked in Area 12+).")
+    async def petadventure(self, interaction: discord.Interaction):
+        uid = str(interaction.user.id)
+        p = get_player(uid)
+        
+        if p.get("area", 1) < 12:
+            await interaction.response.send_message("❌ Pet Adventures are locked until **Area 12**! Use `/area` to progress.", ephemeral=True)
+            return
             
+        user_pets = p.get("pets", [])
+        if not user_pets:
+            await interaction.response.send_message("❌ You don't have any pets in your sanctuary! Buy an egg from `/shop` page 2 and use `/hatch`.", ephemeral=True)
+            return
+
+        pet = random.choice(user_pets)
+        area = p.get("area", 1)
+        
+        found_coins = random.randint(200, 500) * area * pet["level"]
+        found_xp = random.randint(100, 300) * area * pet["level"]
+        
+        p["wallet"] += found_coins
+        p["xp"] += found_xp
+        
+        materials = ["wood", "fish", "iron_ore", "crops"]
+        found_mat = random.choice(materials)
+        mat_qty = random.randint(3, 8) * area
+        
+        p["inventory"][found_mat] = p["inventory"].get(found_mat, 0) + mat_qty
+        
+        level_msg = ""
+        if random.random() < 0.35:
+            pet["level"] += 1
+            level_msg = f"\n🌟 **PET LEVEL UP!** Your **{pet['name']}** reached Level {pet['level']}!"
+
+        level_up_char_msg = self._check_level_up(p)
+        update_player(uid, p)
+
+        embed = discord.Embed(title=f"🐾 Pet Expedition: {pet['name']}", description=f"Your loyal companion **{pet['name']}** (Level {pet['level']}) returned from a successful expedition into the wilderness!", color=discord.Color.green())
+        embed.add_field(name="EXPEDITION SPOILS", value=f"🪙 Coins: +{found_coins:,}\n⭐ XP: +{found_xp:,}\n📦 Materials: +{mat_qty}x {found_mat.replace('_', ' ').title()}{level_msg}{level_up_char_msg}", inline=False)
         await interaction.response.send_message(embed=embed)
 
     @discord.app_commands.command(name="inventory", description="Check your items, materials, and gear.")
@@ -299,35 +303,165 @@ class RpgCog(commands.Cog):
         uid = str(interaction.user.id)
         p = get_player(uid)
         inv = p.get("inventory", {})
-        
         embed = discord.Embed(title=f"🎒 {interaction.user.display_name}'s Inventory", color=discord.Color.gold())
         if not inv:
-            embed.description = "Your inventory is empty! Use `/chop`, `/fish`, or visit the `/shop`."
+            embed.description = "Your inventory is empty!"
         else:
-            inv_text = "\n".join([f"• **{item.title()}**: {qty}" for item, qty in inv.items()])
-            embed.description = inv_text
-            
+            embed.description = "\n".join([f"• **{item.title()}**: {qty}" for item, qty in inv.items()])
         await interaction.response.send_message(embed=embed)
 
     @discord.app_commands.command(name="chop", description="Chop wood in the forest for crafting materials.")
     async def chop(self, interaction: discord.Interaction):
         uid = str(interaction.user.id)
         p = get_player(uid)
-        wood_gained = random.randint(2, 6) * p.get("area", 1)
-        p["inventory"]["wood"] = p["inventory"].get("wood", 0) + wood_gained
-        self._update_quest_progress(p, "chop", wood_gained)
+        wood = random.randint(2, 6) * p.get("area", 1)
+        p["inventory"]["wood"] = p["inventory"].get("wood", 0) + wood
+        self._update_quest_progress(p, "chop", wood)
         update_player(uid, p)
-        await interaction.response.send_message(f"🪓 You swung your axe and collected **{wood_gained}x Wood**!")
+        await interaction.response.send_message(f"🪓 You swung your axe and collected **{wood}x Wood**!")
 
     @discord.app_commands.command(name="fish", description="Fish in the river for aquatic catches.")
     async def fish(self, interaction: discord.Interaction):
         uid = str(interaction.user.id)
         p = get_player(uid)
-        fish_gained = random.randint(1, 4) * p.get("area", 1)
-        p["inventory"]["fish"] = p["inventory"].get("fish", 0) + fish_gained
-        self._update_quest_progress(p, "fish", fish_gained)
+        fish_caught = random.randint(1, 4) * p.get("area", 1)
+        p["inventory"]["fish"] = p["inventory"].get("fish", 0) + fish_caught
+        self._update_quest_progress(p, "fish", fish_caught)
         update_player(uid, p)
-        await interaction.response.send_message(f"🎣 You cast your line and caught **{fish_gained}x Fish**!")
+        await interaction.response.send_message(f"🎣 You cast your line and caught **{fish_caught}x Fish**!")
+
+    @discord.app_commands.command(name="mine", description="Mine ores in the caves (Unlocked in Area 5+).")
+    async def mine(self, interaction: discord.Interaction):
+        uid = str(interaction.user.id)
+        p = get_player(uid)
+        if p.get("area", 1) < 5:
+            await interaction.response.send_message("❌ Mining is locked until **Area 5**! Use `/area` to travel.", ephemeral=True)
+            return
+        ore = random.randint(2, 5) * p.get("area", 1)
+        p["inventory"]["iron_ore"] = p["inventory"].get("iron_ore", 0) + ore
+        self._update_quest_progress(p, "mine", ore)
+        update_player(uid, p)
+        await interaction.response.send_message(f"⛏️ You swung your pickaxe and mined **{ore}x Iron Ore**!")
+
+    @discord.app_commands.command(name="farm", description="Farm crops in your garden (Unlocked in Area 4+).")
+    async def farm(self, interaction: discord.Interaction):
+        uid = str(interaction.user.id)
+        p = get_player(uid)
+        if p.get("area", 1) < 4:
+            await interaction.response.send_message("❌ Farming is locked until **Area 4**!", ephemeral=True)
+            return
+        if p.get("inventory", {}).get("seed", 0) < 1:
+            await interaction.response.send_message("❌ You need a **seed** from `/shop` page 1 to farm!", ephemeral=True)
+            return
+        p["inventory"]["seed"] -= 1
+        if p["inventory"]["seed"] <= 0:
+            del p["inventory"]["seed"]
+        crops = random.randint(5, 12) * p.get("area", 1)
+        p["inventory"]["crops"] = p["inventory"].get("crops", 0) + crops
+        update_player(uid, p)
+        await interaction.response.send_message(f"🌱 You planted a seed and harvested **{crops}x Crops**!")
+
+    @discord.app_commands.command(name="cook", description="Cook raw fish and ingredients into healing food (Area 5+).")
+    async def cook(self, interaction: discord.Interaction):
+        uid = str(interaction.user.id)
+        p = get_player(uid)
+        if p.get("area", 1) < 5:
+            await interaction.response.send_message("❌ Cooking is locked until **Area 5**!", ephemeral=True)
+            return
+        if p.get("inventory", {}).get("fish", 0) < 2:
+            await interaction.response.send_message("❌ You need at least **2x Fish** in your inventory to cook!", ephemeral=True)
+            return
+        p["inventory"]["fish"] -= 2
+        p["inventory"]["cooked_fish"] = p["inventory"].get("cooked_fish", 0) + 1
+        update_player(uid, p)
+        await interaction.response.send_message("🍳 You cooked your fish into a delicious **Cooked Fish** meal!")
+
+    # --- MINI CASINO GAMES (Area 5+) ---
+
+    @discord.app_commands.command(name="coinflip", description="Flip a coin to double your bet or lose it all (Area 5+).")
+    @discord.app_commands.describe(bet="Amount of coins to bet", choice="Choose heads or tails")
+    @discord.app_commands.choices(choice=[
+        discord.app_commands.Choice(name="Heads", value="heads"),
+        discord.app_commands.Choice(name="Tails", value="tails")
+    ])
+    async def coinflip(self, interaction: discord.Interaction, bet: int, choice: str):
+        uid = str(interaction.user.id)
+        p = get_player(uid)
+        if p.get("area", 1) < 5:
+            await interaction.response.send_message("❌ The Casino is locked until **Area 5**!", ephemeral=True)
+            return
+        if bet <= 0 or p["wallet"] < bet:
+            await interaction.response.send_message(f"❌ Invalid bet! Your wallet has 🪙 {p['wallet']:,}.", ephemeral=True)
+            return
+
+        result = random.choice(["heads", "tails"])
+        if choice == result:
+            p["wallet"] += bet
+            update_player(uid, p)
+            await interaction.response.send_message(f"🪙 The coin landed on **{result.upper()}**! You won **🪙 {bet:,} coins**!")
+        else:
+            p["wallet"] -= bet
+            update_player(uid, p)
+            await interaction.response.send_message(f"❌ The coin landed on **{result.upper()}**. You lost your bet of 🪙 {bet:,} coins.")
+
+    @discord.app_commands.command(name="multidice", description="Roll high-stakes dice against the bot in the casino (Area 5+).")
+    @discord.app_commands.describe(bet="Amount of coins to bet")
+    async def multidice(self, interaction: discord.Interaction, bet: int):
+        uid = str(interaction.user.id)
+        p = get_player(uid)
+        if p.get("area", 1) < 5:
+            await interaction.response.send_message("❌ The Casino is locked until **Area 5**!", ephemeral=True)
+            return
+        if bet <= 0 or p["wallet"] < bet:
+            await interaction.response.send_message(f"❌ Invalid bet! Your wallet has 🪙 {p['wallet']:,}.", ephemeral=True)
+            return
+
+        user_roll = random.randint(1, 6) + random.randint(1, 6)
+        bot_roll = random.randint(1, 6) + random.randint(1, 6)
+
+        if user_roll > bot_roll:
+            p["wallet"] += bet
+            outcome = f"🎉 You rolled **{user_roll}** vs Bot's **{bot_roll}**. You won **🪙 {bet:,} coins**!"
+        elif user_roll < bot_roll:
+            p["wallet"] -= bet
+            outcome = f"😢 You rolled **{user_roll}** vs Bot's **{bot_roll}**. You lost **🪙 {bet:,} coins**."
+        else:
+            outcome = f"🤝 Both rolled **{user_roll}**! It's a tie, your bet was returned."
+
+        update_player(uid, p)
+        await interaction.response.send_message(f"🎲 **Casino Dice Table**\n{outcome}")
+
+    @discord.app_commands.command(name="slots", description="Spin the Starlight Casino slot machine (Area 5+).")
+    @discord.app_commands.describe(bet="Amount of coins to bet")
+    async def slots(self, interaction: discord.Interaction, bet: int):
+        uid = str(interaction.user.id)
+        p = get_player(uid)
+        if p.get("area", 1) < 5:
+            await interaction.response.send_message("❌ The Casino is locked until **Area 5**!", ephemeral=True)
+            return
+        if bet <= 0 or p["wallet"] < bet:
+            await interaction.response.send_message(f"❌ Invalid bet! Your wallet has 🪙 {p['wallet']:,}.", ephemeral=True)
+            return
+
+        fruits = ["🍒", "🍋", "🍊", "🔔", "⭐", "💎"]
+        spin = [random.choice(fruits) for _ in range(3)]
+        slot_display = f"| {spin[0]} | {spin[1]} | {spin[2]} |"
+
+        if spin[0] == spin[1] == spin[2]:
+            multiplier = 10 if spin[0] == "💎" else 5
+            winnings = bet * multiplier
+            p["wallet"] += winnings
+            msg = f"🎰 {slot_display}\n🎉 **JACKPOT!** Three {spin[0]}s! You won **🪙 {winnings:,} coins** ({multiplier}x)!"
+        elif spin[0] == spin[1] or spin[1] == spin[2] or spin[0] == spin[2]:
+            winnings = bet * 2
+            p["wallet"] += winnings
+            msg = f"🎰 {slot_display}\n✨ **Winner!** Two matching symbols! You won **🪙 {winnings:,} coins** (2x)!"
+        else:
+            p["wallet"] -= bet
+            msg = f"🎰 {slot_display}\n😢 No match. You lost your bet of 🪙 {bet:,} coins."
+
+        update_player(uid, p)
+        await interaction.response.send_message(msg)
 
     @discord.app_commands.command(name="daily", description="Claim your daily rewards!")
     async def daily(self, interaction: discord.Interaction):
@@ -344,7 +478,7 @@ class RpgCog(commands.Cog):
         p = get_player(uid)
         p["hp"] = p["max_hp"]
         update_player(uid, p)
-        await interaction.response.send_message(f"❤️ You used a healing potion and restored your HP to **{p['max_hp']}/{p['max_hp']}**!")
+        await interaction.response.send_message(f"❤️ You restored your HP to **{p['max_hp']}/{p['max_hp']}**!")
 
     @discord.app_commands.command(name="quest", description="Check your current active Starlight quest or take a new one.")
     async def quest(self, interaction: discord.Interaction):
@@ -358,28 +492,16 @@ class RpgCog(commands.Cog):
             selected = random.choice(QUEST_POOL)
             area = p.get("area", 1)
             p["active_quest"] = {
-                "id": selected["id"],
-                "title": selected["title"],
-                "desc": selected["desc"],
-                "type": selected["type"],
-                "progress": 0,
-                "target": selected["target"],
-                "reward_coins": selected["reward_coins"] * area,
-                "reward_xp": selected["reward_xp"] * area
+                "id": selected["id"], "title": selected["title"], "desc": selected["desc"],
+                "type": selected["type"], "progress": 0, "target": selected["target"],
+                "reward_coins": selected["reward_coins"] * area, "reward_xp": selected["reward_xp"] * area
             }
             update_player(uid, p)
             active = p["active_quest"]
 
         embed = discord.Embed(title="📜 Active Starlight Quest", color=discord.Color.gold())
-        embed.add_field(
-            name=active["title"], 
-            value=f"*{active['desc']}*\n\n**Progress:** {active['progress']}/{active['target']}\n**Rewards:** 🪙 {active['reward_coins']:,} coins | ⭐ {active['reward_xp']:,} XP", 
-            inline=False
-        )
-        if active["progress"] >= active["target"]:
-            embed.set_footer(text="✨ Quest completed! Use /claimquest to collect your rewards!")
-        else:
-            embed.set_footer(text="🔒 Locked: Complete this quest before taking a new one.")
+        embed.add_field(name=active["title"], value=f"*{active['desc']}*\n\n**Progress:** {active['progress']}/{active['target']}\n**Rewards:** 🪙 {active['reward_coins']:,} coins | ⭐ {active['reward_xp']:,} XP", inline=False)
+        embed.set_footer(text="✨ Quest completed! Use /claimquest" if active["progress"] >= active["target"] else "🔒 Complete this quest before taking a new one.")
         await interaction.response.send_message(embed=embed)
 
     @discord.app_commands.command(name="claimquest", description="Claim your rewards for completing your active quest.")
@@ -387,18 +509,14 @@ class RpgCog(commands.Cog):
         uid = str(interaction.user.id)
         p = get_player(uid)
         active = p.get("active_quest")
-        
         if not active or active["progress"] < active["target"]:
             await interaction.response.send_message("❌ You have no completed quest to claim right now!", ephemeral=True)
             return
-            
         p["wallet"] += active["reward_coins"]
         p["xp"] += active["reward_xp"]
         p["active_quest"] = None
-        
         level_msg = self._check_level_up(p)
         update_player(uid, p)
-        
         await interaction.response.send_message(f"🎉 **Quest Completed!** Received 🪙 **{active['reward_coins']:,} coins** and ⭐ **{active['reward_xp']:,} XP**!{level_msg}")
 
 async def setup(bot):
