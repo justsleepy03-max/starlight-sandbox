@@ -12,10 +12,12 @@ intents.message_content = True
 class StarlightBot(commands.Bot):
     async def setup_hook(self):
         await self.load_extension("rpg_cog")
-        
-        TEST_GUILD_ID = 1570758404476244120  
+        await self.load_extension("party_cog")
+        await self.load_extension("quests_cog")
+
+        TEST_GUILD_ID = 1570758404476244120
         guild = discord.Object(id=TEST_GUILD_ID)
-        
+
         try:
             self.tree.copy_global_to(guild=guild)
             synced = await self.tree.sync(guild=guild)
