@@ -4,7 +4,6 @@ import random
 from database import get_player, update_player
 from items import SWORDS, ARMORS, HORSES, MISC_ITEMS, PET_EGGS, BUNDLES
 
-# 24/7 Rotating Quest Pool (Tracks both action counts and item quantities)
 QUEST_POOL = [
     {"id": "hunt_monsters", "title": "Monster Slayer", "desc": "Hunt 5 times in the wild", "target": 5, "type": "hunt", "reward_coins": 1000, "reward_xp": 500},
     {"id": "gather_wood", "title": "Lumberjack Duty", "desc": "Collect 15 Wood", "target": 15, "type": "chop", "reward_coins": 800, "reward_xp": 400},
@@ -189,7 +188,6 @@ class RpgCog(commands.Cog):
         wood_gained = random.randint(2, 6)
         p["inventory"]["wood"] = p["inventory"].get("wood", 0) + wood_gained
         
-        # Tracks total wood collected toward Lumberjack Duty
         self._update_quest_progress(p, "chop", wood_gained)
         update_player(uid, p)
         
@@ -203,7 +201,6 @@ class RpgCog(commands.Cog):
         fish_gained = random.randint(1, 4)
         p["inventory"]["fish"] = p["inventory"].get("fish", 0) + fish_gained
         
-        # Tracks total fish caught toward Master Angler
         self._update_quest_progress(p, "fish", fish_gained)
         update_player(uid, p)
         
@@ -276,4 +273,19 @@ class RpgCog(commands.Cog):
         
         active = p.get("active_quest")
         if not active:
-            await interaction.response.send_message("❌ You don't have an
+            await interaction.response.send_message("❌ You don't have an active quest! Use `/quest` to get one.", ephemeral=True)
+            return
+            
+        if active["progress"] < active["target"]:
+            await interaction.response.send_message(f"❌ Quest incomplete! ({active['progress']}/{active['target']}). Keep working on it!", ephemeral=True)
+            return
+            
+        p["wallet"] += active["reward_coins"]
+        p["xp"] += active["reward_xp"]
+        p["active_quest"] = None
+        update_player(uid, p)
+        
+        await interaction.response.send_message(f"🎉 **Quest Completed!** You received 🪙 **{active['reward_coins']} coins** and ⭐ **{active['reward_xp']} XP**! Use `/quest` to take your next task.")
+
+async def setup(bot):
+    await bot.add_cog(RpgCog(bot))
