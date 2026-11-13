@@ -2,7 +2,7 @@ import discord
 from discord.ext import commands
 import random
 from database import get_player, update_player
-from items import SWORDS, ARMORS, HORSES, BUNDLES
+from items import SWORDS, ARMORS, HORSES, MISC_ITEMS, BUNDLES
 
 class RpgCog(commands.Cog):
     def __init__(self, bot):
@@ -64,41 +64,74 @@ class RpgCog(commands.Cog):
         embed.add_field(name="REWARDS", value=f"🪙 Coins: +{earned_coins}\n⭐ XP: +{earned_xp}", inline=False)
         await interaction.response.send_message(embed=embed)
 
-    @discord.app_commands.command(name="shop", description="View available gear and items in the shop.")
-    async def shop(self, interaction: discord.Interaction):
-        embed = discord.Embed(title="🛒 Starlight RPG Shop", color=discord.Color.blue())
-        
-        swords_list = "\n".join([f"Tier {tid}: **{item['name'].title()}** - 🪙 {item['price']}" for tid, item in SWORDS.items()])
-        armors_list = "\n".join([f"Tier {tid}: **{item['name'].title()}** - 🪙 {item['price']}" for tid, item in ARMORS.items()])
-        
-        embed.add_field(name="⚔️ Swords", value=swords_list, inline=False)
-        embed.add_field(name="🛡️ Armor", value=armors_list, inline=False)
-        embed.set_footer(text="Use /buy <sword/armor> <tier> to purchase gear!")
+    @discord.app_commands.command(name="shop", description="View the Epic RPG and Starlight shop catalog.")
+    @discord.app_commands.describe(page="Shop page number (1, 2, or 3 for Starlight Bundles)")
+    async def shop(self, interaction: discord.Interaction, page: int = 1):
+        if page == 1:
+            embed = discord.Embed(title="🛒 Shop - Page 1/3 (Epic RPG Essentials)", color=discord.Color.blue())
+            embed.description = f"**EPIC NPC:** Hey, {interaction.user.name}! Buy anything with `/buy [item]`"
+            
+            items_text = (
+                "🧪 **life potion** | 🪙 25\n*Restore your life with /heal*\n\n"
+                "🛡️ **basic armor** | 🪙 200\n*[+2 def] An ugly armor made of wood*\n\n"
+                "⚔️ **basic sword** | 🪙 150\n*[+1 at] Better than nothing huh?*\n\n"
+                "🐎 **basic horse** | 🪙 500\n*[tier I] Just a normie horse*\n\n"
+                "🔑 **dungeon key** | 🪙 5,000\n*You need this key to enter the /dungeon*\n\n"
+                "🎫 **lottery ticket** | 🪙 50\n*To join the /lottery*\n\n"
+                "🌱 **seed** | 🪙 4,000\n*Used to /farm*"
+            )
+            embed.add_field(name="Catalog", value=items_text, inline=False)
+            
+        elif page == 2:
+            embed = discord.Embed(title="🛒 Shop - Page 2/3 (Lootboxes & Boosts)", color=discord.Color.blue())
+            embed.description = f"**EPIC NPC:** High-tier gear and boxes!"
+            
+            items_text = (
+                "📦 **common lootbox** | 🪙 800\n📦 **uncommon lootbox** | 🪙 6,000\n"
+                "📦 **rare lootbox** | 🪙 40,000\n📦 **epic lootbox** | 🪙 150,000\n"
+                "📦 **edgy lootbox** | 🪙 420,666\n\n"
+                "✨ **life boost a** (+10 HP) | 🪙 10,000\n"
+                "✨ **life boost b** (+25 HP) | 🪙 100,000\n"
+                "✨ **life boost c** (+50 HP) | 🪙 1,000,000"
+            )
+            embed.add_field(name="Catalog", value=items_text, inline=False)
+            
+        else:
+            embed = discord.Embed(title="✨ Shop - Page 3/3 (Starlight Original Bundles)", color=discord.Color.purple())
+            bundles_text = "\n\n".join([f"🎁 **{b_name}** | 🪙 {data['price']}\n*Contents: {', '.join(data['contents'].keys())}*" for b_name, data in BUNDLES.items()])
+            embed.add_field(name="Starlight Exclusive Bundles", value=bundles_text, inline=False)
+            
+        embed.set_footer(text="Use /buy item:<name> to purchase anything!")
         await interaction.response.send_message(embed=embed)
 
-    @discord.app_commands.command(name="buy", description="Purchase items or gear from the shop.")
-    @discord.app_commands.describe(category="Choose sword or armor", tier="The tier number of the item")
-    async def buy(self, interaction: discord.Interaction, category: str, tier: int):
+    @discord.app_commands.command(name="buy", description="Purchase items, gear, or Starlight bundles from the shop.")
+    @discord.app_commands.describe(item_name="Exact name of the item or bundle you want to buy")
+    async def buy(self, interaction: discord.Interaction, item_name: str):
         uid = str(interaction.user.id)
         p = get_player(uid)
         
-        category = category.lower()
-        catalog = SWORDS if category == "sword" else ARMORS if category == "armor" else None
+        item_name = item_name.lower()
+        price = 0
         
-        if not catalog or tier not in catalog:
-            await interaction.response.send_message("❌ Invalid category or tier! Choose `sword` or `armor` with a valid tier number.", ephemeral=True)
+        # Check MISC_ITEMS
+        if item_name in MISC_ITEMS:
+            price = MISC_ITEMS[item_name]["price"]
+        # Check BUNDLES
+        elif item_name in BUNDLES:
+            price = BUNDLES[item_name]["price"]
+        else:
+            await interaction.response.send_message(f"❌ Unknown item `{item_name}`! Check `/shop` for valid items.", ephemeral=True)
             return
             
-        item = catalog[tier]
-        if p["wallet"] < item["price"]:
-            await interaction.response.send_message(f"❌ You need 🪙 {item['price']} coins to buy the **{item['name']}**, but you only have 🪙 {p['wallet']}.", ephemeral=True)
+        if p["wallet"] < price:
+            await interaction.response.send_message(f"❌ You need 🪙 {price} coins to buy **{item_name}**, but you only have 🪙 {p['wallet']}.", ephemeral=True)
             return
             
-        p["wallet"] -= item["price"]
-        p["inventory"][item["name"]] = p["inventory"].get(item["name"], 0) + 1
+        p["wallet"] -= price
+        p["inventory"][item_name] = p["inventory"].get(item_name, 0) + 1
         update_player(uid, p)
         
-        await interaction.response.send_message(f"🎉 Successfully purchased **{item['name'].title()}** for 🪙 {item['price']} coins!")
+        await interaction.response.send_message(f"🎉 Successfully purchased **{item_name.title()}** for 🪙 {price} coins!")
 
     @discord.app_commands.command(name="inventory", description="Check your items, materials, and gear.")
     async def inventory(self, interaction: discord.Interaction):
