@@ -2,11 +2,16 @@ import discord
 from discord.ext import commands
 import random
 from database import get_player, update_player
-from items import SWORDS, ARMORS, HORSES, MISC_ITEMS, BUNDLES
+from items import SWORDS, ARMORS, HORSES, MISC_ITEMS, PET_EGGS, BUNDLES
 
 class RpgCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+
+    def _update_quest_progress(self, p, action_type):
+        active = p.get("active_quest")
+        if active and active["type"] == action_type and active["progress"] < active["target"]:
+            active["progress"] += 1
 
     @discord.app_commands.command(name="ping", description="Test if the RPG cog is working.")
     async def ping(self, interaction: discord.Interaction):
@@ -34,6 +39,8 @@ class RpgCog(commands.Cog):
         
         p["wallet"] += earned_coins
         p["xp"] += earned_xp
+        
+        self._update_quest_progress(p, "hunt")
         
         level_up_msg = ""
         if p["xp"] >= p["level"] * 100:
@@ -83,16 +90,14 @@ class RpgCog(commands.Cog):
             embed.add_field(name="Catalog", value=items_text, inline=False)
             
         elif page == 2:
-            embed = discord.Embed(title="🛒 Starlight Shop - Page 2/3 (Lootboxes & Boosts)", color=discord.Color.blue())
-            embed.description = f"🌟 **STARLIGHT VENDOR:** High-tier gear and mysterious boxes!"
+            embed = discord.Embed(title="🛒 Starlight Shop - Page 2/3 (Lootboxes & Pets)", color=discord.Color.blue())
+            embed.description = f"🌟 **STARLIGHT VENDOR:** High-tier boxes and companion eggs!"
             
             items_text = (
                 "📦 **common lootbox** | 🪙 800\n📦 **uncommon lootbox** | 🪙 6,000\n"
                 "📦 **rare lootbox** | 🪙 40,000\n📦 **epic lootbox** | 🪙 150,000\n"
                 "📦 **edgy lootbox** | 🪙 420,666\n\n"
-                "✨ **life boost a** (+10 HP) | 🪙 10,000\n"
-                "✨ **life boost b** (+25 HP) | 🪙 100,000\n"
-                "✨ **life boost c** (+50 HP) | 🪙 1,000,000"
+                "🥚 **common egg** | 🪙 1,000\n🥚 **golden egg** | 🪙 15,000\n🥚 **celestial egg** | 🪙 75,000"
             )
             embed.add_field(name="Catalog", value=items_text, inline=False)
             
@@ -116,6 +121,8 @@ class RpgCog(commands.Cog):
         
         if item_name in MISC_ITEMS:
             price = MISC_ITEMS[item_name]["price"]
+        elif item_name in PET_EGGS:
+            price = PET_EGGS[item_name]["price"]
         elif item_name in BUNDLES:
             price = BUNDLES[item_name]["price"]
         else:
@@ -131,6 +138,26 @@ class RpgCog(commands.Cog):
         update_player(uid, p)
         
         await interaction.response.send_message(f"🎉 Successfully purchased **{item_name.title()}** for 🪙 {price} coins!")
+
+    @discord.app_commands.command(name="pets", description="View your active Starlight companion pets.")
+    async def pets(self, interaction: discord.Interaction):
+        uid = str(interaction.user.id)
+        p = get_player(uid)
+        
+        if "pets" not in p:
+            p["pets"] = []
+            update_player(uid, p)
+            
+        user_pets = p["pets"]
+        
+        embed = discord.Embed(title=f"🐾 {interaction.user.display_name}'s Pet Sanctuary", color=discord.Color.green())
+        if not user_pets:
+            embed.description = "You don't have any pets yet! Buy an egg from `/shop` page 2 and hatch it."
+        else:
+            pets_list = "\n".join([f"• **{pet['name']}** (Level {pet['level']})" for pet in user_pets])
+            embed.description = pets_list
+            
+        await interaction.response.send_message(embed=embed)
 
     @discord.app_commands.command(name="inventory", description="Check your items, materials, and gear.")
     async def inventory(self, interaction: discord.Interaction):
@@ -154,6 +181,8 @@ class RpgCog(commands.Cog):
         
         wood_gained = random.randint(2, 6)
         p["inventory"]["wood"] = p["inventory"].get("wood", 0) + wood_gained
+        
+        self._update_quest_progress(p, "chop")
         update_player(uid, p)
         
         await interaction.response.send_message(f"🪓 You swung your axe and collected **{wood_gained}x Wood**!")
@@ -165,6 +194,8 @@ class RpgCog(commands.Cog):
         
         fish_gained = random.randint(1, 4)
         p["inventory"]["fish"] = p["inventory"].get("fish", 0) + fish_gained
+        
+        self._update_quest_progress(p, "fish")
         update_player(uid, p)
         
         await interaction.response.send_message(f"🎣 You cast your line and caught **{fish_gained}x Fish**!")
