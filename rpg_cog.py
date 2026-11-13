@@ -4,18 +4,25 @@ import random
 from database import get_player, update_player
 from items import SWORDS, ARMORS, HORSES, MISC_ITEMS, PET_EGGS, BUNDLES
 
+# 24/7 Rotating Quest Pool (Tracks both action counts and item quantities)
+QUEST_POOL = [
+    {"id": "hunt_monsters", "title": "Monster Slayer", "desc": "Hunt 5 times in the wild", "target": 5, "type": "hunt", "reward_coins": 1000, "reward_xp": 500},
+    {"id": "gather_wood", "title": "Lumberjack Duty", "desc": "Collect 15 Wood", "target": 15, "type": "chop", "reward_coins": 800, "reward_xp": 400},
+    {"id": "catch_fish", "title": "Master Angler", "desc": "Catch 10 Fish", "target": 10, "type": "fish", "reward_coins": 800, "reward_xp": 400},
+]
+
 class RpgCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    def _update_quest_progress(self, p, action_type):
+    def _update_quest_progress(self, p, action_type, amount=1):
         active = p.get("active_quest")
         if active and active["type"] == action_type and active["progress"] < active["target"]:
-            active["progress"] += 1
+            active["progress"] = min(active["target"], active["progress"] + amount)
 
     @discord.app_commands.command(name="ping", description="Test if the RPG cog is working.")
     async def ping(self, interaction: discord.Interaction):
-        await interaction.response.send_message("🏓 Pong! Starlight RPG cog is active and modular!")
+        await interaction.response.send_message("🏓 Pong! Starlight RPG engine is active!")
 
     @discord.app_commands.command(name="profile", description="Check your RPG character stats, level, and gear.")
     async def profile(self, interaction: discord.Interaction):
@@ -40,7 +47,7 @@ class RpgCog(commands.Cog):
         p["wallet"] += earned_coins
         p["xp"] += earned_xp
         
-        self._update_quest_progress(p, "hunt")
+        self._update_quest_progress(p, "hunt", 1)
         
         level_up_msg = ""
         if p["xp"] >= p["level"] * 100:
@@ -76,7 +83,7 @@ class RpgCog(commands.Cog):
     async def shop(self, interaction: discord.Interaction, page: int = 1):
         if page == 1:
             embed = discord.Embed(title="🛒 Starlight Shop - Page 1/3 (Essentials)", color=discord.Color.blue())
-            embed.description = f"🌟 **STARLIGHT VENDOR:** Welcome, {interaction.user.name}! Browse our supplies and grab what you need with `/buy [item]`"
+            embed.description = f"🌟 **STARLIGHT VENDOR:** Welcome, {interaction.user.name}! Browse our supplies and grab what you need with `/buy`"
             
             items_text = (
                 "🧪 **life potion** | 🪙 25\n*Restore your life with /heal*\n\n"
@@ -182,7 +189,8 @@ class RpgCog(commands.Cog):
         wood_gained = random.randint(2, 6)
         p["inventory"]["wood"] = p["inventory"].get("wood", 0) + wood_gained
         
-        self._update_quest_progress(p, "chop")
+        # Tracks total wood collected toward Lumberjack Duty
+        self._update_quest_progress(p, "chop", wood_gained)
         update_player(uid, p)
         
         await interaction.response.send_message(f"🪓 You swung your axe and collected **{wood_gained}x Wood**!")
@@ -195,7 +203,8 @@ class RpgCog(commands.Cog):
         fish_gained = random.randint(1, 4)
         p["inventory"]["fish"] = p["inventory"].get("fish", 0) + fish_gained
         
-        self._update_quest_progress(p, "fish")
+        # Tracks total fish caught toward Master Angler
+        self._update_quest_progress(p, "fish", fish_gained)
         update_player(uid, p)
         
         await interaction.response.send_message(f"🎣 You cast your line and caught **{fish_gained}x Fish**!")
@@ -221,5 +230,50 @@ class RpgCog(commands.Cog):
         
         await interaction.response.send_message(f"❤️ You used a healing potion and restored your HP to **{p['max_hp']}/{p['max_hp']}**!")
 
-async def setup(bot):
-    await bot.add_cog(RpgCog(bot))
+    @discord.app_commands.command(name="quest", description="Check your current active Starlight quest or take a new one.")
+    async def quest(self, interaction: discord.Interaction):
+        uid = str(interaction.user.id)
+        p = get_player(uid)
+        
+        if "active_quest" not in p:
+            p["active_quest"] = None
+
+        active = p["active_quest"]
+        
+        if not active:
+            selected = random.choice(QUEST_POOL)
+            p["active_quest"] = {
+                "id": selected["id"],
+                "title": selected["title"],
+                "desc": selected["desc"],
+                "type": selected["type"],
+                "progress": 0,
+                "target": selected["target"],
+                "reward_coins": selected["reward_coins"],
+                "reward_xp": selected["reward_xp"]
+            }
+            update_player(uid, p)
+            active = p["active_quest"]
+
+        embed = discord.Embed(title="📜 Active Starlight Quest", color=discord.Color.gold())
+        embed.add_field(
+            name=active["title"], 
+            value=f"*{active['desc']}*\n\n**Progress:** {active['progress']}/{active['target']}\n**Rewards:** 🪙 {active['reward_coins']} coins | ⭐ {active['reward_xp']} XP", 
+            inline=False
+        )
+        
+        if active["progress"] >= active["target"]:
+            embed.set_footer(text="✨ Quest completed! Use /claimquest to collect your rewards!")
+        else:
+            embed.set_footer(text="🔒 Locked: Complete this quest before taking a new one.")
+            
+        await interaction.response.send_message(embed=embed)
+
+    @discord.app_commands.command(name="claimquest", description="Claim your rewards for completing your active quest.")
+    async def claimquest(self, interaction: discord.Interaction):
+        uid = str(interaction.user.id)
+        p = get_player(uid)
+        
+        active = p.get("active_quest")
+        if not active:
+            await interaction.response.send_message("❌ You don't have an
