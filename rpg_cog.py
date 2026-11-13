@@ -64,10 +64,10 @@ class RpgCog(commands.Cog):
             embed.add_field(name="Economy & Stats", value="`/profile` - Stats\n`/bal` - Balances\n`/deposit` / `/withdraw` - Bank\n`/daily` - Daily rewards\n`/shop` & `/buy` - Vendor", inline=False)
         elif category == "rpg":
             embed = discord.Embed(title="❓ Starlight Help - RPG & Exploration", color=discord.Color.green())
-            embed.add_field(name="Combat & Quests", value="`/hunt` - Hunt\n`/adventure` - Adventure\n`/area` - Areas\n`/quest` & `/claimquest` - Quests\n`/heal` - Heal HP", inline=False)
+            embed.add_field(name="Combat & Quests", value="`/hunt` - Hunt\n`/adventure` - Adventure\n`/enchant` - Upgrade Gear (Area 2+)\n`/dungeon` - Raid Dungeons\n`/area` - Areas\n`/quest` & `/claimquest` - Quests\n`/heal` - Heal HP", inline=False)
         elif category == "casino":
             embed = discord.Embed(title="🎰 Starlight Help - Mini Casino (Area 5+)", color=discord.Color.gold())
-            embed.add_field(name="Games of Chance", value="`/coinflip` - Double or nothing coin flip\n`/multidice` - Roll high-stakes dice against the bot\n`/slots` - Spin slot machines for massive multipliers", inline=False)
+            embed.add_field(name="Games of Chance", value="`/coinflip` - Double or nothing\n`/multidice` - Dice battle\n`/slots` - Slot machine", inline=False)
         elif category in ["crafting", "pets"]:
             embed = discord.Embed(title="❓ Starlight Help - Crafting & Pets", color=discord.Color.purple())
             embed.add_field(name="Work & Companions", value="`/chop`, `/fish`, `/mine`, `/farm`, `/cook`\n`/hatch`, `/pets`, `/petadventure` (Area 12+)\n`/inventory`", inline=False)
@@ -86,6 +86,7 @@ class RpgCog(commands.Cog):
         embed = discord.Embed(title=f"✨ {interaction.user.display_name}'s Profile", color=discord.Color.blurple())
         embed.add_field(name="PROGRESS", value=f"**Level:** {p['level']} ({p['xp']}/{p['level'] * 250} XP)\n**Area:** {p['area']}", inline=False)
         embed.add_field(name="STATS", value=f"❤️ **HP:** {p['hp']}/{p['max_hp']}", inline=False)
+        embed.add_field(name="GEAR", value=f"⚔️ **Sword Tier:** {p.get('sword_tier', 1)}\n🛡️ **Armor Tier:** {p.get('armor_tier', 1)}", inline=False)
         embed.add_field(name="CURRENCY", value=f"🪙 **Wallet:** {p['wallet']:,}\n🏛️ **Bank:** {p['bank']:,}", inline=False)
         await interaction.response.send_message(embed=embed)
 
@@ -152,12 +153,81 @@ class RpgCog(commands.Cog):
         update_player(uid, p)
         await interaction.response.send_message(f"🚀 Successfully traveled to **Area {target_area}**! New commands and scaling unlocked.")
 
+    @discord.app_commands.command(name="enchant", description="Upgrade your sword or armor using gathered materials (Unlocked in Area 2+).")
+    @discord.app_commands.describe(gear_type="Choose 'sword' or 'armor'")
+    @discord.app_commands.choices(gear_type=[
+        discord.app_commands.Choice(name="Sword", value="sword"),
+        discord.app_commands.Choice(name="Armor", value="armor")
+    ])
+    async def enchant(self, interaction: discord.Interaction, gear_type: str):
+        uid = str(interaction.user.id)
+        p = get_player(uid)
+        
+        if p.get("area", 1) < 2:
+            await interaction.response.send_message("❌ Enchanting is locked until **Area 2**! Use `/area` to progress.", ephemeral=True)
+            return
+            
+        tier_key = f"{gear_type}_tier"
+        current_tier = p.get(tier_key, 1)
+        wood_cost = current_tier * 5
+        ore_cost = current_tier * 3
+        
+        inv = p.get("inventory", {})
+        if inv.get("wood", 0) < wood_cost or inv.get("iron_ore", 0) < ore_cost:
+            await interaction.response.send_message(f"❌ Upgrading your {gear_type} to Tier {current_tier + 1} requires **{wood_cost}x Wood** and **{ore_cost}x Iron Ore**! Check `/inventory`.", ephemeral=True)
+            return
+            
+        inv["wood"] -= wood_cost
+        inv["iron_ore"] -= ore_cost
+        p[tier_key] = current_tier + 1
+        
+        if gear_type == "sword":
+            p["max_hp"] += 10 # small bonus
+        update_player(uid, p)
+        
+        await interaction.response.send_message(f"✨ **SUCCESSFUL ENCHANT!** Your **{gear_type.title()}** was upgraded to **Tier {current_tier + 1}**!")
+
+    @discord.app_commands.command(name="dungeon", description="Raid a dangerous dungeon using a Dungeon Key for massive loot (Area 3+).")
+    async def dungeon(self, interaction: discord.Interaction):
+        uid = str(interaction.user.id)
+        p = get_player(uid)
+        
+        if p.get("area", 1) < 3:
+            await interaction.response.send_message("❌ Dungeons are locked until **Area 3**!", ephemeral=True)
+            return
+            
+        if p.get("inventory", {}).get("dungeon key", 0) < 1:
+            await interaction.response.send_message("❌ You need a **Dungeon Key** from `/shop` page 1 to raid a dungeon!", ephemeral=True)
+            return
+            
+        p["inventory"]["dungeon key"] -= 1
+        if p["inventory"]["dungeon key"] <= 0:
+            del p["inventory"]["dungeon key"]
+            
+        area = p.get("area", 1)
+        reward_coins = random.randint(2500, 6000) * area
+        reward_xp = random.randint(1200, 3000) * area
+        
+        p["wallet"] += reward_coins
+        p["xp"] += reward_xp
+        
+        # Give a rare lootbox reward chance
+        p["inventory"]["rare lootbox"] = p["inventory"].get("rare lootbox", 0) + 1
+        
+        level_msg = self._check_level_up(p)
+        update_player(uid, p)
+        
+        embed = discord.Embed(title="🏰 Dungeon Raid Cleared!", description=f"You braved the dark depths, defeated the dungeon boss, and emerged victorious!", color=discord.Color.gold())
+        embed.add_field(name="RAID SPOILS", value=f"🪙 Coins: +{reward_coins:,}\n⭐ XP: +{reward_xp:,}\n📦 Loot: +1x Rare Lootbox{level_msg}", inline=False)
+        await interaction.response.send_message(embed=embed)
+
     @discord.app_commands.command(name="hunt", description="Hunt for monsters to gain XP and coins based on your area.")
     async def hunt(self, interaction: discord.Interaction):
         uid = str(interaction.user.id)
         p = get_player(uid)
         area = p.get("area", 1)
-        earned_coins = random.randint(20, 45) * area
+        sword_bonus = p.get("sword_tier", 1) * 5
+        earned_coins = (random.randint(20, 45) + sword_bonus) * area
         earned_xp = random.randint(15, 30) * area
         p["wallet"] += earned_coins
         p["xp"] += earned_xp
@@ -174,7 +244,8 @@ class RpgCog(commands.Cog):
         uid = str(interaction.user.id)
         p = get_player(uid)
         area = p.get("area", 1)
-        earned_coins = random.randint(80, 180) * area
+        sword_bonus = p.get("sword_tier", 1) * 15
+        earned_coins = (random.randint(80, 180) + sword_bonus) * area
         earned_xp = random.randint(60, 130) * area
         p["wallet"] += earned_coins
         p["xp"] += earned_xp
@@ -375,8 +446,6 @@ class RpgCog(commands.Cog):
         p["inventory"]["cooked_fish"] = p["inventory"].get("cooked_fish", 0) + 1
         update_player(uid, p)
         await interaction.response.send_message("🍳 You cooked your fish into a delicious **Cooked Fish** meal!")
-
-    # --- MINI CASINO GAMES (Area 5+) ---
 
     @discord.app_commands.command(name="coinflip", description="Flip a coin to double your bet or lose it all (Area 5+).")
     @discord.app_commands.describe(bet="Amount of coins to bet", choice="Choose heads or tails")
