@@ -21,6 +21,12 @@ HORSES = {
     4: {"name": "super horse", "price": 50000, "tier": 4},
 }
 
+PET_EGGS = {
+    "common egg": {"price": 1000, "desc": "Hatches into a common companion!"},
+    "golden egg": {"price": 15000, "desc": "Hatches into a rare Starlight pet!"},
+    "celestial egg": {"price": 75000, "desc": "Hatches into a legendary cosmic entity!"}
+}
+
 MISC_ITEMS = {
     "life potion": {"price": 25, "desc": "Restore your life with /heal"},
     "dungeon key": {"price": 5000, "desc": "Required to enter the /dungeon"},
