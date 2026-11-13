@@ -11,6 +11,25 @@ QUEST_POOL = [
     {"id": "mine_ore", "title": "Master Miner", "desc": "Mine 10 Iron Ore", "target": 10, "type": "mine", "reward_coins": 1200, "reward_xp": 600},
 ]
 
+# Area biomes and exclusive thematic drops
+AREA_BIOMES = {
+    1: {"name": "Whispering Woods", "drop": "soft bark"},
+    2: {"name": "Crumbling Ruins", "drop": "ancient stone"},
+    3: {"name": "Sunken Riverbank", "drop": "river pearl"},
+    4: {"name": "Glimmering Meadows", "drop": "sweet nectar"},
+    5: {"name": "Crystal Caverns", "drop": "crystal shard"},
+    6: {"name": "Shadowed Thicket", "drop": "shadow petal"},
+    7: {"name": "Volcanic Caldera", "drop": "magma core"},
+    8: {"name": "Whispering Windplains", "drop": "gale feather"},
+    9: {"name": "Frozen Tundra", "drop": "everfrost ice"},
+    10: {"name": "Dragon’s Spire", "drop": "dragon scale"},
+    11: {"name": "Temporal Rift", "drop": "chrono dust"},
+    12: {"name": "Celestial Sanctuary", "drop": "starlight essence"},
+    13: {"name": "Abyssal Depths", "drop": "void matter"},
+    14: {"name": "Mythic Overgrowth", "drop": "world-tree sap"},
+    15: {"name": "The Transcendence Core", "drop": "singularity core"}
+}
+
 AREA_UNLOCKS = {
     1: "Default: /hunt, /adventure, /chop, /fish, /shop, /inventory, /quest",
     2: "/enchant, /area, /training",
@@ -64,7 +83,7 @@ class RpgCog(commands.Cog):
             embed.add_field(name="Economy & Stats", value="`/profile` - Stats\n`/bal` - Balances\n`/deposit` / `/withdraw` - Bank\n`/daily` - Daily rewards\n`/shop` & `/buy` - Vendor", inline=False)
         elif category == "rpg":
             embed = discord.Embed(title="❓ Starlight Help - RPG & Exploration", color=discord.Color.green())
-            embed.add_field(name="Combat & Quests", value="`/hunt` - Hunt\n`/adventure` - Adventure\n`/enchant` - Upgrade Gear (Area 2+)\n`/dungeon` - Raid Dungeons\n`/area` - Areas\n`/quest` & `/claimquest` - Quests\n`/heal` - Heal HP", inline=False)
+            embed.add_field(name="Combat & Quests", value="`/hunt` - Hunt\n`/adventure` - Adventure\n`/enchant` - Upgrade Gear (Area 2+)\n`/dungeon` - Raid Dungeons\n`/area` - Areas (Biomes)\n`/quest` & `/claimquest` - Quests\n`/heal` - Heal HP", inline=False)
         elif category == "casino":
             embed = discord.Embed(title="🎰 Starlight Help - Mini Casino (Area 5+)", color=discord.Color.gold())
             embed.add_field(name="Games of Chance", value="`/coinflip` - Double or nothing\n`/multidice` - Dice battle\n`/slots` - Slot machine", inline=False)
@@ -83,8 +102,11 @@ class RpgCog(commands.Cog):
     async def profile(self, interaction: discord.Interaction):
         uid = str(interaction.user.id)
         p = get_player(uid)
+        area = p.get("area", 1)
+        biome = AREA_BIOMES.get(area, {}).get("name", "Unknown Biome")
+        
         embed = discord.Embed(title=f"✨ {interaction.user.display_name}'s Profile", color=discord.Color.blurple())
-        embed.add_field(name="PROGRESS", value=f"**Level:** {p['level']} ({p['xp']}/{p['level'] * 250} XP)\n**Area:** {p['area']}", inline=False)
+        embed.add_field(name="PROGRESS", value=f"**Level:** {p['level']} ({p['xp']}/{p['level'] * 250} XP)\n**Area:** {area} ({biome})", inline=False)
         embed.add_field(name="STATS", value=f"❤️ **HP:** {p['hp']}/{p['max_hp']}", inline=False)
         embed.add_field(name="GEAR", value=f"⚔️ **Sword Tier:** {p.get('sword_tier', 1)}\n🛡️ **Armor Tier:** {p.get('armor_tier', 1)}", inline=False)
         embed.add_field(name="CURRENCY", value=f"🪙 **Wallet:** {p['wallet']:,}\n🏛️ **Bank:** {p['bank']:,}", inline=False)
@@ -126,7 +148,7 @@ class RpgCog(commands.Cog):
         update_player(uid, p)
         await interaction.response.send_message(f"🪙 Successfully withdrew **🪙 {wit_amount:,} coins** into your wallet!")
 
-    @discord.app_commands.command(name="area", description="View your current area, unlocks, or travel to a new area.")
+    @discord.app_commands.command(name="area", description="View your current area, biomes, unlocks, or travel to a new area.")
     @discord.app_commands.describe(target_area="Area number to travel to")
     async def area(self, interaction: discord.Interaction, target_area: int = None):
         uid = str(interaction.user.id)
@@ -134,8 +156,12 @@ class RpgCog(commands.Cog):
         current_area = p.get("area", 1)
 
         if target_area is None:
-            embed = discord.Embed(title=f"🗺️ Starlight Area Progression (Current: Area {current_area})", color=discord.Color.blue())
-            lines = [f"**Area {a_num}** [{'✅ Current' if a_num == current_area else '✅ Unlocked' if a_num < current_area else '🔒 Locked'}]\n*🔓 {unlocks}*\n" for a_num, unlocks in AREA_UNLOCKS.items()]
+            embed = discord.Embed(title=f"🗺️ Starlight Biome & Area Progression (Current: Area {current_area})", color=discord.Color.blue())
+            lines = []
+            for a_num, unlocks in AREA_UNLOCKS.items():
+                biome_name = AREA_BIOMES.get(a_num, {}).get("name", "Unknown")
+                status = '✅ Current' if a_num == current_area else '✅ Unlocked' if a_num < current_area else '🔒 Locked'
+                lines.append(f"**Area {a_num}: {biome_name}** [{status}]\n*🔓 {unlocks}*\n")
             embed.description = "\n".join(lines)
             embed.set_footer(text="Use /area target_area:<num> to travel to unlocked areas!")
             await interaction.response.send_message(embed=embed)
@@ -151,7 +177,8 @@ class RpgCog(commands.Cog):
 
         p["area"] = target_area
         update_player(uid, p)
-        await interaction.response.send_message(f"🚀 Successfully traveled to **Area {target_area}**! New commands and scaling unlocked.")
+        new_biome = AREA_BIOMES.get(target_area, {}).get("name", "Unknown")
+        await interaction.response.send_message(f"🚀 Successfully traveled to **Area {target_area} ({new_biome})**! New biome drops and scaling unlocked.")
 
     @discord.app_commands.command(name="enchant", description="Upgrade your sword or armor using gathered materials (Unlocked in Area 2+).")
     @discord.app_commands.describe(gear_type="Choose 'sword' or 'armor'")
@@ -182,7 +209,7 @@ class RpgCog(commands.Cog):
         p[tier_key] = current_tier + 1
         
         if gear_type == "sword":
-            p["max_hp"] += 10 # small bonus
+            p["max_hp"] += 10
         update_player(uid, p)
         
         await interaction.response.send_message(f"✨ **SUCCESSFUL ENCHANT!** Your **{gear_type.title()}** was upgraded to **Tier {current_tier + 1}**!")
@@ -210,8 +237,6 @@ class RpgCog(commands.Cog):
         
         p["wallet"] += reward_coins
         p["xp"] += reward_xp
-        
-        # Give a rare lootbox reward chance
         p["inventory"]["rare lootbox"] = p["inventory"].get("rare lootbox", 0) + 1
         
         level_msg = self._check_level_up(p)
@@ -221,39 +246,53 @@ class RpgCog(commands.Cog):
         embed.add_field(name="RAID SPOILS", value=f"🪙 Coins: +{reward_coins:,}\n⭐ XP: +{reward_xp:,}\n📦 Loot: +1x Rare Lootbox{level_msg}", inline=False)
         await interaction.response.send_message(embed=embed)
 
-    @discord.app_commands.command(name="hunt", description="Hunt for monsters to gain XP and coins based on your area.")
+    @discord.app_commands.command(name="hunt", description="Hunt for monsters in your current area biome to gain XP, coins, and rare biome drops.")
     async def hunt(self, interaction: discord.Interaction):
         uid = str(interaction.user.id)
         p = get_player(uid)
         area = p.get("area", 1)
+        biome = AREA_BIOMES.get(area, {})
+        biome_drop = biome.get("drop", "common material")
+        
         sword_bonus = p.get("sword_tier", 1) * 5
         earned_coins = (random.randint(20, 45) + sword_bonus) * area
         earned_xp = random.randint(15, 30) * area
+        drop_qty = random.randint(1, 3) * area
+        
         p["wallet"] += earned_coins
         p["xp"] += earned_xp
+        p["inventory"][biome_drop] = p["inventory"].get(biome_drop, 0) + drop_qty
+        
         self._update_quest_progress(p, "hunt", 1)
         level_msg = self._check_level_up(p)
         update_player(uid, p)
         
-        embed = discord.Embed(title=f"⚔️ Hunt Completed (Area {area})", description="You fought courageously and emerged victorious!", color=discord.Color.green())
-        embed.add_field(name="REWARDS", value=f"🪙 Coins: +{earned_coins:,}\n⭐ XP: +{earned_xp:,}{level_msg}", inline=False)
+        embed = discord.Embed(title=f"⚔️ Hunt in {biome['name']} (Area {area})", description="You fought courageously through the biome and secured rare loot!", color=discord.Color.green())
+        embed.add_field(name="REWARDS", value=f"🪙 Coins: +{earned_coins:,}\n⭐ XP: +{earned_xp:,}\n🌿 Biome Drop: +{drop_qty}x {biome_drop.title()}{level_msg}", inline=False)
         await interaction.response.send_message(embed=embed)
 
-    @discord.app_commands.command(name="adventure", description="Embark on an epic adventure in your current area!")
+    @discord.app_commands.command(name="adventure", description="Embark on an epic adventure in your current area biome!")
     async def adventure(self, interaction: discord.Interaction):
         uid = str(interaction.user.id)
         p = get_player(uid)
         area = p.get("area", 1)
+        biome = AREA_BIOMES.get(area, {})
+        biome_drop = biome.get("drop", "common material")
+        
         sword_bonus = p.get("sword_tier", 1) * 15
         earned_coins = (random.randint(80, 180) + sword_bonus) * area
         earned_xp = random.randint(60, 130) * area
+        drop_qty = random.randint(3, 7) * area
+        
         p["wallet"] += earned_coins
         p["xp"] += earned_xp
+        p["inventory"][biome_drop] = p["inventory"].get(biome_drop, 0) + drop_qty
+        
         level_msg = self._check_level_up(p)
         update_player(uid, p)
         
-        embed = discord.Embed(title=f"🗺️ Epic Adventure (Area {area})", description="You adventured deep into the wilderness and triumphed over a miniboss!", color=discord.Color.orange())
-        embed.add_field(name="REWARDS", value=f"🪙 Coins: +{earned_coins:,}\n⭐ XP: +{earned_xp:,}{level_msg}", inline=False)
+        embed = discord.Embed(title=f"🗺️ Epic Adventure in {biome['name']} (Area {area})", description="You adventured deep into the regional biome and triumphed over a miniboss!", color=discord.Color.orange())
+        embed.add_field(name="REWARDS", value=f"🪙 Coins: +{earned_coins:,}\n⭐ XP: +{earned_xp:,}\n🌟 Biome Drop: +{drop_qty}x {biome_drop.title()}{level_msg}", inline=False)
         await interaction.response.send_message(embed=embed)
 
     @discord.app_commands.command(name="shop", description="View the Starlight RPG shop catalog.")
