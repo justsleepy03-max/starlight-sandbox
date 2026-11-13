@@ -47,7 +47,7 @@ AREA_UNLOCKS = {
     15: "/time jump, /transcend"
 }
 
-# --- INTERACTIVE RPG ACTION VIEWS ---
+# --- INTERACTIVE VIEWS ---
 class RPGActionView(discord.ui.View):
     def __init__(self, cog, user_id):
         super().__init__(timeout=180)
@@ -95,7 +95,7 @@ class ShopPaginationView(discord.ui.View):
         embed = self.cog.get_shop_embed(1)
         await interaction.response.edit_message(embed=embed, view=ShopPaginationView(self.cog, self.user_id, 1))
 
-    @discord.ui.button(label="◀️ Page 2", style=discord.ButtonStyle.primary, custom_id="shop_p2")
+    @discord.ui.button(label="Page 2", style=discord.ButtonStyle.primary, custom_id="shop_p2")
     async def p2_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         embed = self.cog.get_shop_embed(2)
         await interaction.response.edit_message(embed=embed, view=ShopPaginationView(self.cog, self.user_id, 2))
@@ -104,6 +104,32 @@ class ShopPaginationView(discord.ui.View):
     async def p3_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         embed = self.cog.get_shop_embed(3)
         await interaction.response.edit_message(embed=embed, view=ShopPaginationView(self.cog, self.user_id, 3))
+
+
+class HelpView(discord.ui.View):
+    def __init__(self, cog, user_id):
+        super().__init__(timeout=120)
+        self.cog = cog
+        self.user_id = user_id
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if str(interaction.user.id) != self.user_id:
+            await interaction.response.send_message("❌ This help menu doesn't belong to you!", ephemeral=True)
+            return False
+        return True
+
+    @discord.ui.button(label="⚔️ RPG Core", style=discord.ButtonStyle.primary, custom_id="help_rpg")
+    async def rpg_help(self, interaction: discord.Interaction, button: discord.ui.Button):
+        embed = discord.Embed(title="✨ Starlight Sandbox - RPG Core Commands", color=discord.Color.blurple())
+        embed.add_field(name="Actions & Hub", value="`/profile` - View stats & button action hub\n`/hunt` - Hunt monsters in current biome\n`/adventure` - Embark on an epic adventure\n`/chop` - Collect wood\n`/fish` - Catch fish", inline=False)
+        embed.add_field(name="Progression & Economy", value="`/area` - View or travel between biomes\n`/shop` - Browse interactive shop catalog\n`/inventory` - Check items & materials\n`/bal` - Check wallet & bank\n`/daily` - Claim daily coins\n`/quest` & `/claimquest` - Complete & claim tasks", inline=False)
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    @discord.ui.button(label="🎉 Party Games", style=discord.ButtonStyle.success, custom_id="help_party")
+    async def party_help(self, interaction: discord.Interaction, button: discord.ui.Button):
+        embed = discord.Embed(title="🎉 Starlight Sandbox - Party Games Suite", color=discord.Color.gold())
+        embed.add_field(name="Interactive Games", value="`/cah` - Play Cards Against Humanity with buttons\n`/trivia` - Test knowledge with interactive buttons\n`/connect4` - Play Connect Four board with column buttons\n`/bingo` - Generate a community Bingo card\n`/uno` - Draw starting Uno card\n`/wordchain` - Play Word Chain in chat\n`/truth` or `/dare` - Get random prompts\n`/mafia` - Assign secret roles via DM", inline=False)
+        await interaction.response.edit_message(embed=embed, view=self)
 
 
 class RpgCog(commands.Cog):
@@ -141,6 +167,16 @@ class RpgCog(commands.Cog):
             bundles_text = "\n\n".join([f"🎁 **{b_name}** | 🪙 {data['price']}\n*Contents: {', '.join(data['contents'].keys())}*" for b_name, data in BUNDLES.items()])
             embed.add_field(name="Starlight Bundles", value=bundles_text, inline=False)
         return embed
+
+    @discord.app_commands.command(name="help", description="View all available Starlight Sandbox commands and games.")
+    async def help(self, interaction: discord.Interaction):
+        uid = str(interaction.user.id)
+        embed = discord.Embed(title="🌟 Starlight Sandbox - Help Hub", description="Select a category using the buttons below to explore all RPG commands and Party Games!", color=discord.Color.blurple())
+        embed.add_field(name="Quick Overview", value="• **RPG Core**: Level up across 15 biomes, hunt, gather, and quest!\n• **Party Games**: Play Cards Against Humanity, Trivia, Connect Four, Bingo, and more!", inline=False)
+        embed.set_footer(text="Starlight Community Bot • Button Navigation")
+        
+        view = HelpView(self, uid)
+        await interaction.response.send_message(embed=embed, view=view)
 
     @discord.app_commands.command(name="profile", description="Check your RPG character stats, gear, and action buttons.")
     async def profile(self, interaction: discord.Interaction):
@@ -347,5 +383,6 @@ class RpgCog(commands.Cog):
     @discord.app_commands.command(name="fish", description="Fish in the river.")
     async def fish(self, interaction: discord.Interaction):
         await self.execute_fish(interaction)
+
 async def setup(bot):
     await bot.add_cog(RpgCog(bot))
