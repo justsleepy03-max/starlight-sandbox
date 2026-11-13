@@ -10,7 +10,6 @@ QUEST_POOL = [
     {"id": "catch_fish", "title": "Master Angler", "desc": "Catch 10 Fish", "target": 10, "type": "fish", "reward_coins": 800, "reward_xp": 400},
 ]
 
-# Epic RPG Area Unlocks Definition
 AREA_UNLOCKS = {
     1: "Default: /hunt, /adventure, /chop, /fish, /shop, /inventory, /quest",
     2: "/enchant, /area, /training",
@@ -39,7 +38,7 @@ class RpgCog(commands.Cog):
             active["progress"] = min(active["target"], active["progress"] + amount)
 
     def _check_level_up(self, p):
-        xp_needed = p["level"] * 250  # Epic RPG style scaling
+        xp_needed = p["level"] * 250
         messages = []
         while p["xp"] >= xp_needed:
             p["xp"] -= xp_needed
@@ -53,6 +52,28 @@ class RpgCog(commands.Cog):
     @discord.app_commands.command(name="ping", description="Test if the RPG cog is working.")
     async def ping(self, interaction: discord.Interaction):
         await interaction.response.send_message("🏓 Pong! Starlight RPG engine is active!")
+
+    @discord.app_commands.command(name="help", description="View all available Starlight RPG commands and categories.")
+    @discord.app_commands.describe(category="Filter by category (general, rpg, crafting, pets)")
+    async def help_command(self, interaction: discord.Interaction, category: str = None):
+        category = category.lower() if category else None
+        
+        if category == "general":
+            embed = discord.Embed(title="❓ Starlight Help - General & Economy", color=discord.Color.blue())
+            embed.add_field(name="Economy & Stats", value="`/profile` - View your level, XP, and HP\n`/bal` - Check your wallet and bank balances\n`/deposit` - Deposit coins into your bank\n`/withdraw` - Withdraw coins to your wallet\n`/daily` - Claim your daily coin rewards\n`/shop` - Browse the 3-page shop catalog\n`/buy` - Purchase items, boxes, or bundles", inline=False)
+        elif category == "rpg":
+            embed = discord.Embed(title="❓ Starlight Help - RPG & Exploration", color=discord.Color.green())
+            embed.add_field(name="Combat & Quests", value="`/hunt` - Hunt monsters for XP and coins\n`/adventure` - Embark on high-tier adventures\n`/area` - View area unlocks and travel\n`/quest` - Check or take active quests\n`/claimquest` - Claim completed quest rewards\n`/heal` - Restore your HP with potions", inline=False)
+        elif category in ["crafting", "pets"]:
+            embed = discord.Embed(title="❓ Starlight Help - Crafting & Pets", color=discord.Color.purple())
+            embed.add_field(name="Gathering & Companions", value="`/chop` - Chop wood in the forest\n`/fish` - Fish in the river\n`/inventory` - Check your items and materials\n`/hatch` - Hatch purchased eggs into pets\n`/pets` - View your active companion sanctuary", inline=False)
+        else:
+            embed = discord.Embed(title="✨ Starlight RPG - Command Directory", color=discord.Color.gold())
+            embed.description = "Here are all available command categories. Use `/help category:<name>` for specific lists!"
+            embed.add_field(name="📂 Categories", value="• **general** (Profile, Bal, Deposit, Withdraw, Daily, Shop, Buy)\n• **rpg** (Hunt, Adventure, Area, Quest, Claimquest, Heal)\n• **crafting** (Chop, Fish, Inventory)\n• **pets** (Hatch, Pets)", inline=False)
+            embed.set_footer(text="Starlight Sandbox • Built for Epic RPG 1:1 Parity")
+
+        await interaction.response.send_message(embed=embed)
 
     @discord.app_commands.command(name="profile", description="Check your RPG character stats, level, and gear.")
     async def profile(self, interaction: discord.Interaction):
@@ -115,11 +136,6 @@ class RpgCog(commands.Cog):
 
         if target_area is None:
             embed = discord.Embed(title=f"🗺️ Starlight Area Progression (Current: Area {current_area})", color=discord.Color.blue())
-            desc = []
-            for a_num, unlocks in AREA_UNLOCKS.items():
-                status = "✅ Unlocked" if a_num <= current_area else "🔒 Locked"
-                desc.endswith(f"**Area {a_num}** [{status}]\n*{unlocks}*") # formatting
-            
             lines = [f"**Area {a_num}** [{'✅ Current' if a_num == current_area else '✅ Unlocked' if a_num < current_area else '🔒 Locked'}]\n*🔓 {unlocks}*\n" for a_num, unlocks in AREA_UNLOCKS.items()]
             embed.description = "\n".join(lines)
             embed.set_footer(text="Use /area target_area:<num> to travel to unlocked areas!")
@@ -154,7 +170,7 @@ class RpgCog(commands.Cog):
         level_msg = self._check_level_up(p)
         update_player(uid, p)
         
-        embed = discord.Embed(title=f"⚔️ Hunt Completed (Area {area})", description=f"You fought courageously and emerged victorious!", color=discord.Color.green())
+        embed = discord.Embed(title=f"⚔️ Hunt Completed (Area {area})", description="You fought courageously and emerged victorious!", color=discord.Color.green())
         embed.add_field(name="REWARDS", value=f"🪙 Coins: +{earned_coins:,}\n⭐ XP: +{earned_xp:,}{level_msg}", inline=False)
         await interaction.response.send_message(embed=embed)
 
@@ -173,7 +189,7 @@ class RpgCog(commands.Cog):
         level_msg = self._check_level_up(p)
         update_player(uid, p)
         
-        embed = discord.Embed(title=f"🗺️ Epic Adventure (Area {area})", description=f"You adventured deep into the wilderness and triumphed over a miniboss!", color=discord.Color.orange())
+        embed = discord.Embed(title=f"🗺️ Epic Adventure (Area {area})", description="You adventured deep into the wilderness and triumphed over a miniboss!", color=discord.Color.orange())
         embed.add_field(name="REWARDS", value=f"🪙 Coins: +{earned_coins:,}\n⭐ XP: +{earned_xp:,}{level_msg}", inline=False)
         await interaction.response.send_message(embed=embed)
 
@@ -246,7 +262,6 @@ class RpgCog(commands.Cog):
             await interaction.response.send_message(f"❌ You don't have a **{egg_name}** in your inventory! Buy one from `/shop` page 2.", ephemeral=True)
             return
             
-        # Deduct egg & add pet
         p["inventory"][egg_name] -= 1
         if p["inventory"][egg_name] <= 0:
             del p["inventory"][egg_name]
