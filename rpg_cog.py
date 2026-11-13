@@ -8,6 +8,24 @@ class RpgCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
+    async def cog_load(self):
+        # Automatically sync global commands when the cog loads
+        try:
+            synced = await self.bot.tree.sync()
+            print(f"Successfully synced {len(synced)} global commands from rpg_cog!")
+        except Exception as e:
+            print(f"Failed to sync command tree: {e}")
+
+    # Manual prefix sync command in case global sync is delayed by Discord
+    @commands.command(name="sync")
+    @commands.is_owner()
+    async def manual_sync(self, ctx):
+        try:
+            synced = await self.bot.tree.sync()
+            await ctx.send(f"🔄 Successfully force-synced {len(synced)} slash commands globally!")
+        except Exception as e:
+            await ctx.send(f"❌ Failed to sync: {e}")
+
     @discord.app_commands.command(name="ping", description="Test if the RPG cog is working.")
     async def ping(self, interaction: discord.Interaction):
         await interaction.response.send_message("🏓 Pong! Starlight RPG cog is active and modular!")
