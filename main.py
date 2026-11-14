@@ -16,6 +16,7 @@ class StarlightBot(commands.Bot):
         await self.load_extension("quests_cog")
         await self.load_extension("tickets_cog")
         await self.load_extension("embed_cog")
+        await self.load_extension("pets_cog")
         TEST_GUILD_ID = 1570758404476244120
         guild = discord.Object(id=TEST_GUILD_ID)
 
