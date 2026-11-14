@@ -146,4 +146,17 @@ class HelpView(discord.ui.View):
         self.user_id = user_id
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        if str(interaction.user.id) != self
+        if str(interaction.user.id) != self.user_id:
+            await interaction.response.send_message("❌ This help menu doesn't belong to you!", ephemeral=True)
+            return False
+        return True
+
+    @discord.ui.button(label="⚔️ RPG Core", style=discord.ButtonStyle.primary, custom_id="help_rpg")
+    async def rpg_help(self, interaction: discord.Interaction, button: discord.ui.Button):
+        embed = discord.Embed(title="✨ Starlight Sandbox - RPG Core Commands", color=discord.Color.blurple())
+        embed.add_field(name="Actions & Hub", value="`/profile` - View stats & action hub\n`/hunt` - Hunt monsters in current biome\n`/adventure` - Embark on an epic adventure\n`/chop` - Collect wood\n`/fish` - Catch fish", inline=False)
+        embed.add_field(name="Progression & Economy", value="`/area` - View or travel between biomes\n`/shop` - Browse interactive shop catalog\n`/inventory` - Check items & materials\n`/bal` - Check wallet & bank\n`/daily` - Claim daily coins\n`/open` - Open loot boxes\n`/craft` - Craft gear using biome materials\n`/equip-gear` - Equip weapons & armor\n`/enchant` - Upgrade gear stats", inline=False)
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    @discord.ui.button(label="🎉 Party Games", style=discord.ButtonStyle.success, custom_id="help_party")
+    async def
