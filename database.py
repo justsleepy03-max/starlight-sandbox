@@ -1,18 +1,20 @@
 import json
 import os
 
-DATA_FILE = "rpg_data.json"
+DATA_DIR = "/app/data"
+DATA_FILE = os.path.join(DATA_DIR, "rpg_data.json")
 
 def load_data():
     if not os.path.exists(DATA_FILE):
         return {}
-    with open(DATA_FILE, "r") as f:
-        try:
+    try:
+        with open(DATA_FILE, "r") as f:
             return json.load(f)
-        except json.JSONDecodeError:
-            return {}
+    except json.JSONDecodeError:
+        return {}
 
 def save_data(data):
+    os.makedirs(DATA_DIR, exist_ok=True)
     with open(DATA_FILE, "w") as f:
         json.dump(data, f, indent=4)
 
