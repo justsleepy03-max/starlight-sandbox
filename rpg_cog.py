@@ -154,14 +154,14 @@ class HelpView(discord.ui.View):
     @discord.ui.button(label="⚔️ RPG Core", style=discord.ButtonStyle.primary, custom_id="help_rpg")
     async def rpg_help(self, interaction: discord.Interaction, button: discord.ui.Button):
         embed = discord.Embed(title="✨ Starlight Sandbox - RPG Core Commands", color=discord.Color.blurple())
-        embed.add_field(name="Actions & Hub", value="`/profile` - View stats & button action hub\n`/hunt` - Hunt monsters in current biome\n`/adventure` - Embark on an epic adventure\n`/chop` - Collect wood\n`/fish` - Catch fish", inline=False)
-        embed.add_field(name="Progression & Economy", value="`/area` - View or travel between biomes\n`/shop` - Browse interactive shop catalog\n`/inventory` - Check items & materials\n`/bal` - Check wallet & bank\n`/daily` - Claim daily coins\n`/quest` & `/claimquest` - Complete & claim tasks", inline=False)
+        embed.add_field(name="Actions & Hub", value="`/profile` - View stats & action hub\n`/hunt` - Hunt monsters in current biome\n`/adventure` - Embark on an epic adventure\n`/chop` - Collect wood\n`/fish` - Catch fish", inline=False)
+        embed.add_field(name="Progression & Economy", value="`/area` - View or travel between biomes\n`/shop` - Browse shop catalog\n`/inventory` - Check items & materials\n`/bal` - Check wallet & bank\n`/daily` - Claim daily coins\n`/open` - Open loot boxes\n`/craft` - Craft gear using biome materials\n`/equip` - Equip weapons & armor\n`/enchant` - Upgrade gear stats", inline=False)
         await interaction.response.edit_message(embed=embed, view=self)
 
     @discord.ui.button(label="🎉 Party Games", style=discord.ButtonStyle.success, custom_id="help_party")
     async def party_help(self, interaction: discord.Interaction, button: discord.ui.Button):
         embed = discord.Embed(title="🎉 Starlight Sandbox - Party Games Suite", color=discord.Color.gold())
-        embed.add_field(name="Interactive Games", value="`/cah` - Play Cards Against Humanity with buttons\n`/trivia` - Test knowledge with interactive buttons\n`/connect4` - Play Connect Four board with column buttons\n`/bingo` - Generate a community Bingo card\n`/uno` - Draw starting Uno card\n`/wordchain` - Play Word Chain in chat\n`/truth` or `/dare` - Get random prompts\n`/mafia` - Assign secret roles via DM", inline=False)
+        embed.add_field(name="Interactive Games", value="`/cah` - Play Cards Against Humanity\n`/trivia` - Test knowledge with buttons\n`/connect4` - Play Connect Four\n`/bingo` - Generate Bingo card", inline=False)
         await interaction.response.edit_message(embed=embed, view=self)
 
 
@@ -205,7 +205,7 @@ class RpgCog(commands.Cog):
     async def help(self, interaction: discord.Interaction):
         uid = str(interaction.user.id)
         embed = discord.Embed(title="🌟 Starlight Sandbox - Help Hub", description="Select a category using the buttons below to explore all RPG commands and Party Games!", color=discord.Color.blurple())
-        embed.add_field(name="Quick Overview", value="• **RPG Core**: Level up across 15 biomes, hunt, gather, and quest!\n• **Party Games**: Play Cards Against Humanity, Trivia, Connect Four, Bingo, and more!", inline=False)
+        embed.add_field(name="Quick Overview", value="• **RPG Core**: Level up across 15 biomes, hunt, gather, and quest!\n• **Party Games**: Play Cards Against Humanity, Trivia, Connect Four, and more!", inline=False)
         embed.set_footer(text="Starlight Community Bot • Button Navigation")
         
         view = HelpView(self, uid)
@@ -413,6 +413,195 @@ class RpgCog(commands.Cog):
         level_msg = self._check_level_up(p)
         update_player(uid, p)
         await interaction.response.send_message(f"🎉 Quest Completed! Received 🪙 {active['reward_coins']:,} coins!{level_msg}")
+
+    # --- NEW: LOOT BOX OPENING SYSTEM ---
+    @discord.app_commands.command(name="open", description="Open a loot box from your inventory.")
+    @app_commands.describe(box_tier="Choose the tier of loot box to open")
+    @app_commands.choices(box_tier=[
+        app_commands.Choice(name="Common Lootbox", value="common lootbox"),
+        app_commands.Choice(name="Uncommon Lootbox", value="uncommon lootbox"),
+        app_commands.Choice(name="Rare Lootbox", value="rare lootbox"),
+        app_commands.Choice(name="Epic Lootbox", value="epic lootbox")
+    ])
+    async def open_box(self, interaction: discord.Interaction, box_tier: str):
+        uid = str(interaction.user.id)
+        p = get_player(uid)
+        inv = p.get("inventory", {})
+
+        if inv.get(box_tier, 0) < 1:
+            await interaction.response.send_message(f"❌ You don't have a **{box_tier.title()}** in your inventory! Buy one from `/shop`.", ephemeral=True)
+            return
+
+        # Consume 1 box
+        inv[box_tier] -= 1
+        if inv[box_tier] <= 0:
+            del inv[box_tier]
+
+        area = p.get("area", 1)
+        biome = AREA_BIOMES.get(area, {})
+        drop_item = biome.get("drop", "soft bark")
+
+        rewards_text = []
+        
+        if box_tier == "common lootbox":
+            coins = random.randint(200, 500) * area
+            mat_qty = random.randint(3, 8)
+            p["wallet"] += coins
+            inv[drop_item] = inv.get(drop_item, 0) + mat_qty
+            rewards_text.append(f"🪙 +{coins:,} Coins")
+            rewards_text.append(f"📦 +{mat_qty}x {drop_item.title()}")
+            
+            # 10% chance for Common Egg
+            if random.random() < 0.10:
+                inv["common egg"] = inv.get("common egg", 0) + 1
+                rewards_text.append("🥚 **Common Egg!**")
+
+        elif box_tier == "uncommon lootbox":
+            coins = random.randint(1000, 2500) * area
+            mat_qty = random.randint(8, 15)
+            p["wallet"] += coins
+            inv[drop_item] = inv.get(drop_item, 0) + mat_qty
+            rewards_text.append(f"🪙 +{coins:,} Coins")
+            app_text = f"📦 +{mat_qty}x {drop_item.title()}"
+            rewards_text.append(app_text)
+            
+            # 15% Common Egg, 5% Golden Egg
+            roll = random.random()
+            if roll < 0.05:
+                inv["golden egg"] = inv.get("golden egg", 0) + 1
+                rewards_text.append("🥚✨ **Golden Egg!**")
+            elif roll < 0.20:
+                inv["common egg"] = inv.get("common egg", 0) + 1
+                rewards_text.append("🥚 **Common Egg!**")
+
+        elif box_tier == "rare lootbox":
+            coins = random.randint(8000, 18000) * area
+            mat_qty = random.randint(15, 30)
+            p["wallet"] += coins
+            inv[drop_item] = inv.get(drop_item, 0) + mat_qty
+            rewards_text.append(f"🪙 +{coins:,} Coins")
+            rewards_text.append(f"📦 +{mat_qty}x {drop_item.title()}")
+            
+            # 20% Golden Egg, 5% Celestial Egg
+            roll = random.random()
+            if roll < 0.05:
+                inv["celestial egg"] = inv.get("celestial egg", 0) + 1
+                rewards_text.append("🌟🥚 **Celestial Egg!**")
+            elif roll < 0.25:
+                inv["golden egg"] = inv.get("golden egg", 0) + 1
+                rewards_text.append("🥚✨ **Golden Egg!**")
+
+        elif box_tier == "epic lootbox":
+            coins = random.randint(40000, 90000) * area
+            mat_qty = random.randint(30, 60)
+            p["wallet"] += coins
+            inv[drop_item] = inv.get(drop_item, 0) + mat_qty
+            rewards_text.append(f"🪙 +{coins:,} Coins")
+            rewards_text.append(f"📦 +{mat_qty}x {drop_item.title()}")
+            
+            # 35% Golden Egg, 15% Celestial Egg
+            roll = random.random()
+            if roll < 0.15:
+                inv["celestial egg"] = inv.get("celestial egg", 0) + 1
+                rewards_text.append("🌟🥚 **Celestial Egg!**")
+            elif roll < 0.50:
+                inv["golden egg"] = inv.get("golden egg", 0) + 1
+                rewards_text.append("🥚✨ **Golden Egg!**")
+
+        update_player(uid, p)
+        
+        embed = discord.Embed(title=f"📦 Opened {box_tier.title()}", description=f"You opened a loot box and obtained:\n\n" + "\n".join([f"• {r}" for r in rewards_text]), color=discord.Color.purple())
+        await interaction.response.send_message(embed=embed)
+
+    # --- NEW: CRAFTING, EQUIPPING & ENCHANTING ---
+    @discord.app_commands.command(name="craft", description="Craft upgraded swords or armor using biome materials.")
+    @app_commands.describe(gear_type="Choose weapon or armor", tier="Target tier to craft")
+    @app_commands.choices(gear_type=[
+        app_commands.Choice(name="Sword", value="sword"),
+        app_commands.Choice(name="Armor", value="armor")
+    ])
+    async def craft(self, interaction: discord.Interaction, gear_type: str, tier: int):
+        uid = str(interaction.user.id)
+        p = get_player(uid)
+        inv = p.get("inventory", {})
+
+        if tier < 2 or tier > 5:
+            await interaction.response.send_message("❌ Craftable gear tiers range from Tier 2 to Tier 5.", ephemeral=True)
+            return
+
+        current_tier = p.get(f"{gear_type}_tier", 1)
+        if tier <= current_tier:
+            await interaction.response.send_message(f"❌ You already own or exceed Tier {tier} {gear_type}!", ephemeral=True)
+            return
+
+        if tier > current_tier + 1:
+            await interaction.response.send_message(f"❌ You must craft Tier {current_tier + 1} first before jumping to Tier {tier}!", ephemeral=True)
+            return
+
+        # Material cost scales by tier
+        cost_qty = tier * 15
+        area = p.get("area", 1)
+        biome_drop = AREA_BIOMES.get(min(tier, 15), {}).get("drop", "soft bark")
+
+        if inv.get(biome_drop, 0) < cost_qty:
+            await interaction.response.send_message(f"❌ Not enough materials! You need **{cost_qty}x {biome_drop.title()}** (You have {inv.get(biome_drop, 0)}). Gather them via `/adventure` or `/hunt` in matching biomes!", ephemeral=True)
+            return
+
+        # Deduct materials and upgrade
+        inv[biome_drop] -= cost_qty
+        p[f"{gear_type}_tier"] = tier
+        
+        if gear_type == "armor":
+            p["max_hp"] += (tier * 25)
+            p["hp"] = p["max_hp"]
+
+        update_player(uid, p)
+        await interaction.response.send_message(f" forge 🛠️ Successfully crafted and equipped **Tier {tier} {gear_type.title()}** using {cost_qty}x {biome_drop.title()}!")
+
+    @discord.app_commands.command(name="equip", description="Equip unlocked weapons or armor.")
+    @app_commands.describe(gear_type="Choose sword or armor", tier="Tier to equip")
+    @app_commands.choices(gear_type=[
+        app_commands.Choice(name="Sword", value="sword"),
+        app_commands.Choice(name="Armor", value="armor")
+    ])
+    async def equip(self, interaction: discord.Interaction, gear_type: str, tier: int):
+        uid = str(interaction.user.id)
+        p = get_player(uid)
+        max_unlocked = p.get(f"{gear_type}_tier", 1)
+
+        if tier > max_unlocked:
+            await interaction.response.send_message(f"❌ You haven't crafted or unlocked Tier {tier} {gear_type} yet! Use `/craft` first.", ephemeral=True)
+            return
+
+        p[f"active_{gear_type}_tier"] = tier
+        update_player(uid, p)
+        await interaction.response.send_message(f"🛡️ Successfully equipped **Tier {tier} {gear_type.title()}**!")
+
+    @discord.app_commands.command(name="enchant", description="Enchant your gear to boost stats using extra materials.")
+    @app_commands.describe(gear_type="Choose sword or armor")
+    @app_commands.choices(gear_type=[
+        app_commands.Choice(name="Sword", value="sword"),
+        app_commands.Choice(name="Armor", value="armor")
+    ])
+    async def enchant(self, interaction: discord.Interaction, gear_type: str):
+        uid = str(interaction.user.id)
+        p = get_player(uid)
+        inv = p.get("inventory", {})
+        
+        area = p.get("area", 1)
+        biome_drop = AREA_BIOMES.get(area, {}).get("drop", "soft bark")
+        cost = 25 * area
+
+        if inv.get(biome_drop, 0) < cost:
+            await interaction.response.send_message(f"❌ Enchanting requires **{cost}x {biome_drop.title()}** from your current area!", ephemeral=True)
+            return
+
+        inv[biome_drop] -= cost
+        enchant_key = f"{gear_type}_enchant"
+        p[enchant_key] = p.get(enchant_key, 0) + 1
+        update_player(uid, p)
+
+        await interaction.response.send_message(f"✨ Successfully enchanted your **{gear_type.title()}** (+{p[enchant_key]} Enchant Level) using {cost}x {biome_drop.title()}!")
 
     # --- COMMANDS WITH DYNAMIC COOLDOWNS ---
 
