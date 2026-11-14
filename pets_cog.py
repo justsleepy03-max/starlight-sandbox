@@ -1,6 +1,7 @@
 import os
 import json
 import random
+import time
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -24,6 +25,13 @@ def save_pets_data(data):
     with open(PETS_FILE, "w") as f:
         json.dump(data, f, indent=4)
 
+# Incubation durations in seconds
+HATCH_TIMES = {
+    "Common Egg": 15 * 60,       # 15 minutes
+    "Golden Egg": 2 * 60 * 60,   # 2 hours
+    "Celestial Egg": 6 * 60 * 60 # 6 hours
+}
+
 # Pet Roster Definitions
 PET_DATABASE = {
     "Starlight Slime": {"rarity": "Common", "type": "Common Egg", "buff_desc": "+2% Coin bonus on commands", "buff_type": "coin", "value": 0.02},
@@ -45,28 +53,97 @@ class PetsCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @app_commands.command(name="hatch", description="Hatch a pet from your inventory using an egg type.")
+    @app_commands.command(name="hatch", description="Place an egg into your incubator to start hatching!")
     @app_commands.choices(egg_type=[
-        app_commands.Choice(name="Common Egg", value="Common Egg"),
-        app_commands.Choice(name="Golden Egg", value="Golden Egg"),
-        app_commands.Choice(name="Celestial Egg", value="Celestial Egg")
+        app_commands.Choice(name="Common Egg (15m)", value="Common Egg"),
+        app_commands.Choice(name="Golden Egg (2h)", value="Golden Egg"),
+        app_commands.Choice(name="Celestial Egg (6h)", value="Celestial Egg")
     ])
     async def hatch(self, interaction: discord.Interaction, egg_type: str):
         user_id = str(interaction.user.id)
         data = load_pets_data()
         
         if user_id not in data:
-            data[user_id] = {"inventory": [], "active_pet": None, "eggs": {}}
+            data[user_id] = {"inventory": [], "active_pet": None, "incubating": None}
 
-        # Note: You can link this to your economy/item inventory system later. 
-        # For now, it lets users hatch based on their available pool!
+        user_data = data[user_id]
+
+        if user_data.get("incubating"):
+            await interaction.response.send_message("❌ Your incubator is already busy! Use `/incubator` to check status or `/claim` when it's finished.", ephemeral=True)
+            return
+
+        duration = HATCH_TIMES[egg_type]
+        finish_time = time.time() + duration
+
+        user_data["incubating"] = {
+            "egg_type": egg_type,
+            "finish_time": finish_time
+        }
+        save_pets_data(data)
+
+        embed = discord.Embed(
+            title="🥚 Incubator Started!",
+            description=f"You placed a **{egg_type}** into the incubator.\nCheck back in using `/incubator` to monitor its progress!",
+            color=discord.Color.orange()
+        )
+        embed.set_footer(text=f"Hatch Time: {egg_type.split('(')[-1] if '(' in egg_type else duration // 60} minutes")
+        await interaction.response.send_message(embed=embed)
+
+    @app_commands.command(name="incubator", description="Check the status of your currently incubating egg.")
+    async def incubator(self, interaction: discord.Interaction):
+        user_id = str(interaction.user.id)
+        data = load_pets_data()
         
-        # Determine roll pools based on egg type
+        user_data = data.get(user_id, {})
+        incubating = user_data.get("incubating")
+
+        embed = discord.Embed(title="⚙️ Starlight Incubator", color=discord.Color.blurple())
+
+        if not incubating:
+            embed.description = "Your incubator is currently empty. Use `/hatch` to start incubating an egg!"
+        else:
+            egg_type = incubating["egg_type"]
+            finish_time = incubating["finish_time"]
+            remaining = int(finish_time - time.time())
+
+            if remaining <= 0:
+                embed.description = f"🎉 Your **{egg_type}** has finished hatching! Run **`/claim`** to see what you got!"
+                embed.color = discord.Color.green()
+            else:
+                mins, secs = divmod(remaining, 60)
+                hours, mins = divmod(mins, 60)
+                time_str = f"{hours}h {mins}m {secs}s" if hours > 0 else f"{mins}m {secs}s"
+                embed.description = f"incubating: **{egg_type}**\n⏱️ **Time Remaining:** {time_str}"
+                embed.color = discord.Color.gold()
+
+        await interaction.response.send_message(embed=embed)
+
+    @app_commands.command(name="claim", description="Claim your hatched pet from the incubator.")
+    async def claim(self, interaction: discord.Interaction):
+        user_id = str(interaction.user.id)
+        data = load_pets_data()
+        
+        user_data = data.get(user_id, {})
+        incubating = user_data.get("incubating")
+
+        if not incubating:
+            await interaction.response.send_message("❌ You don't have anything currently incubating in your incubator!", ephemeral=True)
+            return
+
+        remaining = int(incubating["finish_time"] - time.time())
+        if remaining > 0:
+            mins, secs = divmod(remaining, 60)
+            hours, mins = divmod(mins, 60)
+            time_str = f"{hours}h {mins}m {secs}s" if hours > 0 else f"{mins}m {secs}s"
+            await interaction.response.send_message(f"⏳ Your egg is still hatching! Come back in **{time_str}** or check `/incubator`.", ephemeral=True)
+            return
+
+        egg_type = incubating["egg_type"]
         roll = random.random()
         hatched_pet_name = None
 
+        # RNG roll based on egg tier
         if egg_type == "Common Egg":
-            # ~75% Common, ~20% Uncommon, ~5% Rare
             if roll < 0.75:
                 hatched_pet_name = random.choice(["Starlight Slime", "Pebble Crab", "Shadow Mouse"])
             elif roll < 0.95:
@@ -75,7 +152,6 @@ class PetsCog(commands.Cog):
                 hatched_pet_name = random.choice(["Ember Fox", "Glowtail Panther"])
                 
         elif egg_type == "Golden Egg":
-            # ~60% Uncommon, ~30% Rare, ~10% Epic
             if roll < 0.60:
                 hatched_pet_name = random.choice(["Sunwing Finch", "Crystal Hedgehog"])
             elif roll < 0.90:
@@ -84,16 +160,16 @@ class PetsCog(commands.Cog):
                 hatched_pet_name = random.choice(["Astral Phoenix", "Void Turtle"])
                 
         elif egg_type == "Celestial Egg":
-            # ~70% Epic, ~30% Legendary
             if roll < 0.70:
                 hatched_pet_name = random.choice(["Astral Phoenix", "Void Turtle"])
             else:
                 hatched_pet_name = random.choice(["Nebula Dragon", "Starlight Celestial Spirit"])
 
         pet_info = PET_DATABASE[hatched_pet_name]
-        
-        # Add to user inventory
-        data[user_id]["inventory"].append({
+
+        # Clear incubator slot and add to inventory
+        user_data["incubating"] = None
+        user_data["inventory"].append({
             "name": hatched_pet_name,
             "rarity": pet_info["rarity"],
             "buff": pet_info["buff_desc"]
@@ -101,11 +177,11 @@ class PetsCog(commands.Cog):
         save_pets_data(data)
 
         embed = discord.Embed(
-            title="🥚 Egg Hatched Successfully!",
-            description=f"You cracked open a **{egg_type}** and out popped...",
+            title="✨ Egg Claimed Successfully!",
+            description=f"Your **{egg_type}** hatched into...",
             color=discord.Color.gold()
         )
-        embed.add_field(name=f"✨ {hatched_pet_name} ({pet_info['rarity']})", value=f"**Buff:** {pet_info['buff_desc']}", inline=False)
+        embed.add_field(name=f"🐾 {hatched_pet_name} ({pet_info['rarity']})", value=f"**Buff:** {pet_info['buff_desc']}", inline=False)
         await interaction.response.send_message(embed=embed)
 
     @app_commands.command(name="pets", description="View your pet collection and active companion.")
@@ -125,7 +201,7 @@ class PetsCog(commands.Cog):
             embed.add_field(name="🟢 Active Companion", value="None equipped. Use `/equip` to choose one!", inline=False)
 
         if not inventory:
-            embed.description = "Your inventory is empty! Buy some eggs from the shop and hatch them."
+            embed.description = "Your inventory is empty! Incubate and hatch some eggs to start your collection."
         else:
             pet_list = "\n".join([f"• **{p['name']}** ({p['rarity']}) - *{p['buff']}*" for p in inventory])
             embed.add_field(name=f"📦 All Pets ({len(inventory)})", value=pet_list, inline=False)
@@ -138,8 +214,6 @@ class PetsCog(commands.Cog):
         data = load_pets_data()
         
         user_data = data.get(user_id, {"inventory": [], "active_pet": None})
-        
-        # Find pet in inventory
         matching_pet = next((p for p in user_data["inventory"] if p["name"].lower() == pet_name.lower()), None)
         
         if not matching_pet:
