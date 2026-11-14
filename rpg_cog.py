@@ -1,8 +1,41 @@
-import discord
-from discord.ext import commands
+import os
+import json
 import random
+import time
+import discord
+from discord import app_commands
+from discord.ext import commands
 from database import get_player, update_player
 from items import SWORDS, ARMORS, HORSES, MISC_ITEMS, PET_EGGS, BUNDLES
+
+DATA_DIR = "/app/data"
+PETS_FILE = os.path.join(DATA_DIR, "pets.json")
+
+def load_pets_data():
+    if not os.path.exists(PETS_FILE):
+        return {}
+    try:
+        with open(PETS_FILE, "r") as f:
+            return json.load(f)
+    except json.JSONDecodeError:
+        return {}
+
+def get_cooldown_multiplier(user_id):
+    """Checks user's active pet and returns cooldown multiplier (e.g. 0.90 for -10%)."""
+    data = load_pets_data()
+    user_data = data.get(str(user_id), {})
+    active_pet = user_data.get("active_pet")
+    
+    if not active_pet:
+        return 1.0
+    
+    pet_name = active_pet.get("name")
+    if pet_name == "Starlight Celestial Spirit":
+        return 0.90  # -10% cooldown
+    elif pet_name == "Shadow Mouse":
+        return 0.99  # -1% cooldown
+        
+    return 1.0
 
 QUEST_POOL = [
     {"id": "hunt_monsters", "title": "Monster Slayer", "desc": "Hunt 5 times in the wild", "target": 5, "type": "hunt", "reward_coins": 1000, "reward_xp": 500},
@@ -315,12 +348,25 @@ class RpgCog(commands.Cog):
         embed.add_field(name="Bank & Wallet", value=f"🪙 **Wallet:** {p['wallet']:,} coins\n🏛️ **Bank:** {p['bank']:,} coins", inline=False)
         await interaction.response.send_message(embed=embed)
 
-    @discord.app_commands.command(name="daily", description="Claim daily reward.")
+    @discord.app_commands.command(name="daily", description="Claim your 24-hour daily reward.")
     async def daily(self, interaction: discord.Interaction):
         uid = str(interaction.user.id)
         p = get_player(uid)
+        
+        now = time.time()
+        last_claimed = p.get("last_daily", 0)
+        cooldown_period = 24 * 60 * 60  # 24 hours in seconds
+        
+        if now - last_claimed < cooldown_period:
+            remaining = int(cooldown_period - (now - last_claimed))
+            hours, remainder = divmod(remaining, 3600)
+            minutes, seconds = divmod(remainder, 60)
+            await interaction.response.send_message(f"⏳ You have already claimed your daily reward! Come back in **{hours}h {minutes}m {seconds}s**.", ephemeral=True)
+            return
+
         bonus = 500 * p.get("area", 1)
         p["wallet"] += bonus
+        p["last_daily"] = now
         update_player(uid, p)
         await interaction.response.send_message(f"🎁 Claimed daily reward: 🪙 {bonus:,} coins!")
 
@@ -368,21 +414,63 @@ class RpgCog(commands.Cog):
         update_player(uid, p)
         await interaction.response.send_message(f"🎉 Quest Completed! Received 🪙 {active['reward_coins']:,} coins!{level_msg}")
 
+    # --- COMMANDS WITH DYNAMIC COOLDOWNS ---
+
     @discord.app_commands.command(name="hunt", description="Hunt for monsters in your current area biome.")
+    @app_commands.checks.cooldown(1, 10.0, key=lambda i: i.user.id)
     async def hunt(self, interaction: discord.Interaction):
         await self.execute_hunt(interaction)
 
+    @hunt.error
+    async def hunt_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
+        if isinstance(error, app_commands.CommandOnCooldown):
+            mult = get_cooldown_multiplier(interaction.user.id)
+            remaining = error.retry_after * mult
+            await interaction.response.send_message(f"⏳ Your hunting instincts need a moment to rest! Try again in **{remaining:.1f}s**.", ephemeral=True)
+        else:
+            raise error
+
     @discord.app_commands.command(name="adventure", description="Embark on an epic adventure in your current area biome!")
+    @app_commands.checks.cooldown(1, 15.0, key=lambda i: i.user.id)
     async def adventure(self, interaction: discord.Interaction):
         await self.execute_adventure(interaction)
 
+    @adventure.error
+    async def adventure_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
+        if isinstance(error, app_commands.CommandOnCooldown):
+            mult = get_cooldown_multiplier(interaction.user.id)
+            remaining = error.retry_after * mult
+            await interaction.response.send_message(f"⏳ You are recovering from your last grand adventure! Ready again in **{remaining:.1f}s**.", ephemeral=True)
+        else:
+            raise error
+
     @discord.app_commands.command(name="chop", description="Chop wood in the forest.")
+    @app_commands.checks.cooldown(1, 5.0, key=lambda i: i.user.id)
     async def chop(self, interaction: discord.Interaction):
         await self.execute_chop(interaction)
 
+    @chop.error
+    async def chop_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
+        if isinstance(error, app_commands.CommandOnCooldown):
+            mult = get_cooldown_multiplier(interaction.user.id)
+            remaining = error.retry_after * mult
+            await interaction.response.send_message(f"🪵 Your arms are tired from chopping! Catch your breath for **{remaining:.1f}s**.", ephemeral=True)
+        else:
+            raise error
+
     @discord.app_commands.command(name="fish", description="Fish in the river.")
+    @app_commands.checks.cooldown(1, 5.0, key=lambda i: i.user.id)
     async def fish(self, interaction: discord.Interaction):
         await self.execute_fish(interaction)
+
+    @fish.error
+    async def fish_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
+        if isinstance(error, app_commands.CommandOnCooldown):
+            mult = get_cooldown_multiplier(interaction.user.id)
+            remaining = error.retry_after * mult
+            await interaction.response.send_message(f"🎣 The fish are spooked! Cast your line again in **{remaining:.1f}s**.", ephemeral=True)
+        else:
+            raise error
 
 async def setup(bot):
     await bot.add_cog(RpgCog(bot))
