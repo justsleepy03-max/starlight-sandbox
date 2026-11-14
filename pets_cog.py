@@ -9,7 +9,7 @@ from discord.ext import commands
 DATA_DIR = "/app/data"
 PETS_FILE = os.path.join(DATA_DIR, "pets.json")
 
-# Ensure data directory exists
+# Ensure persistent data directory exists
 os.makedirs(DATA_DIR, exist_ok=True)
 
 def load_pets_data():
@@ -27,9 +27,9 @@ def save_pets_data(data):
 
 # Incubation durations in seconds
 HATCH_TIMES = {
-    "Common Egg": 15 * 60,       # 15 minutes
-    "Golden Egg": 2 * 60 * 60,   # 2 hours
-    "Celestial Egg": 6 * 60 * 60 # 6 hours
+    "Common Egg": 15 * 60,        # 15 minutes
+    "Golden Egg": 2 * 60 * 60,    # 2 hours
+    "Celestial Egg": 6 * 60 * 60  # 6 hours
 }
 
 # Expedition Durations and Rewards
@@ -93,7 +93,7 @@ class PetsCog(commands.Cog):
             description=f"You placed a **{egg_type}** into the incubator.\nCheck back in using `/incubator` to monitor its progress!",
             color=discord.Color.orange()
         )
-        embed.set_footer(text=f"Hatch Time: {egg_type.split('(')[-1] if '(' in egg_type else duration // 60} minutes")
+        embed.set_footer(text=f"Hatch Time: {egg_type}")
         await interaction.response.send_message(embed=embed)
 
     @app_commands.command(name="incubator", description="Check the status of your currently incubating egg.")
@@ -174,7 +174,7 @@ class PetsCog(commands.Cog):
         pet_info = PET_DATABASE[hatched_pet_name]
 
         user_data["incubating"] = None
-        user_data["inventory"].append({
+        user_data.setdefault("inventory", []).append({
             "name": hatched_pet_name,
             "rarity": pet_info["rarity"],
             "buff": pet_info["buff_desc"]
@@ -328,7 +328,7 @@ class PetsCog(commands.Cog):
 
         coins_earned = info["base_coins"]
         
-        # Apply coin bonuses from active pet buffs (e.g., Glowtail Panther, Nebula Dragon, Starlight Slime)
+        # Apply coin bonuses from active pet buffs
         active_pet = user_data.get("active_pet")
         if active_pet:
             if active_pet["name"] == "Glowtail Panther":
