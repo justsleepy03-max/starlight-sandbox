@@ -155,7 +155,7 @@ class HelpView(discord.ui.View):
     async def rpg_help(self, interaction: discord.Interaction, button: discord.ui.Button):
         embed = discord.Embed(title="✨ Starlight Sandbox - RPG Core Commands", color=discord.Color.blurple())
         embed.add_field(name="Actions & Hub", value="`/profile` - View stats & action hub\n`/hunt` - Hunt monsters in current biome\n`/adventure` - Embark on an epic adventure\n`/chop` - Collect wood\n`/fish` - Catch fish", inline=False)
-        embed.add_field(name="Progression & Economy", value="`/area` - View or travel between biomes\n`/shop` - Browse interactive shop catalog\n`/inventory` - Check items & materials\n`/bal` - Check wallet & bank\n`/daily` - Claim daily coins\n`/open` - Open loot boxes\n`/craft` - Craft gear using biome materials\n`/equip-gear` - Equip weapons & armor\n`/enchant` - Upgrade gear stats", inline=False)
+        embed.add_field(name="Progression & Economy", value="`/area` - View or travel between biomes\n`/shop` - Browse interactive shop catalog\n`/buy` - Purchase shop items\n`/inventory` - Check items & materials\n`/bal` - Check wallet & bank\n`/daily` - Claim daily coins\n`/open` - Open loot boxes\n`/use` - Use potions & hatch eggs\n`/craft` - Craft gear using biome materials\n`/equip-gear` - Equip weapons & armor\n`/enchant` - Upgrade gear stats", inline=False)
         await interaction.response.edit_message(embed=embed, view=self)
 
     @discord.ui.button(label="🎉 Party Games", style=discord.ButtonStyle.success, custom_id="help_party")
@@ -327,6 +327,52 @@ class RpgCog(commands.Cog):
         embed = self.get_shop_embed(1)
         view = ShopPaginationView(self, uid, 1)
         await interaction.response.send_message(embed=embed, view=view)
+
+    @discord.app_commands.command(name="buy", description="Buy an item from the Starlight Shop catalog.")
+    @app_commands.describe(item_name="Name of the item to buy", quantity="Quantity to purchase (default 1)")
+    async def buy(self, interaction: discord.Interaction, item_name: str, quantity: int = 1):
+        uid = str(interaction.user.id)
+        p = get_player(uid)
+        
+        item_lower = item_name.lower().strip()
+        
+        SHOP_PRICES = {
+            "life potion": 25,
+            "basic armor": 200,
+            "basic sword": 150,
+            "basic horse": 500,
+            "dungeon key": 5000,
+            "seed": 4000,
+            "common lootbox": 800,
+            "uncommon lootbox": 6000,
+            "rare lootbox": 40000,
+            "epic lootbox": 150000,
+            "common egg": 1000,
+            "golden egg": 15000,
+            "celestial egg": 75000
+        }
+        
+        if item_lower not in SHOP_PRICES:
+            await interaction.response.send_message(f"❌ Unknown item **'{item_name}'**! Check `/shop` for valid catalog items.", ephemeral=True)
+            return
+            
+        if quantity < 1:
+            await interaction.response.send_message("❌ You must buy at least 1 of an item.", ephemeral=True)
+            return
+            
+        total_cost = SHOP_PRICES[item_lower] * quantity
+        
+        if p["wallet"] < total_cost:
+            await interaction.response.send_message(f"❌ You don't have enough coins! You need **🪙 {total_cost:,}** coins, but your wallet has **🪙 {p['wallet']:,}**.", ephemeral=True)
+            return
+            
+        p["wallet"] -= total_cost
+        inv = p.setdefault("inventory", {})
+        inv[item_lower] = inv.get(item_lower, 0) + quantity
+        
+        update_player(uid, p)
+        
+        await interaction.response.send_message(f"🛒 Successfully purchased **{quantity}x {item_name.title()}** for **🪙 {total_cost:,} coins**!")
 
     @discord.app_commands.command(name="inventory", description="Check your items and materials.")
     async def inventory(self, interaction: discord.Interaction):
@@ -506,6 +552,53 @@ class RpgCog(commands.Cog):
         
         embed = discord.Embed(title=f"📦 Opened {box_tier.title()}", description=f"You opened a loot box and obtained:\n\n" + "\n".join([f"• {r}" for r in rewards_text]), color=discord.Color.purple())
         await interaction.response.send_message(embed=embed)
+
+    # --- USE ITEM SYSTEM (Potions, Eggs) ---
+    @discord.app_commands.command(name="use", description="Use an item from your inventory (e.g. life potions, pet eggs).")
+    @app_commands.describe(item_name="Name of the item to use")
+    async def use_item(self, interaction: discord.Interaction, item_name: str):
+        uid = str(interaction.user.id)
+        p = get_player(uid)
+        inv = p.get("inventory", {})
+        
+        item_lower = item_name.lower().strip()
+        
+        if inv.get(item_lower, 0) < 1:
+            await interaction.response.send_message(f"❌ You don't have any **{item_name.title()}** in your inventory!", ephemeral=True)
+            return
+
+        if item_lower == "life potion":
+            if p["hp"] >= p["max_hp"]:
+                await interaction.response.send_message("❤️ Your HP is already completely full!", ephemeral=True)
+                return
+                
+            inv[item_lower] -= 1
+            if inv[item_lower] <= 0:
+                del inv[item_lower]
+                
+            p["hp"] = p["max_hp"]
+            update_player(uid, p)
+            await interaction.response.send_message(f"🧪 You drank a Life Potion and fully restored your HP to **{p['max_hp']}**!")
+            return
+
+        elif item_lower in ["common egg", "golden egg", "celestial egg"]:
+            inv[item_lower] -= 1
+            if inv[item_lower] <= 0:
+                del inv[item_lower]
+                
+            if item_lower == "common egg":
+                pet_name = random.choice(["Shadow Mouse", "Forest Sprite", "Pebble Pup"])
+            elif item_lower == "golden egg":
+                pet_name = random.choice(["Golden Phoenix", "Sun Cub", "Crystal Drake"])
+            else:
+                pet_name = "Starlight Celestial Spirit"
+                
+            update_player(uid, p)
+            await interaction.response.send_message(f"🥚✨ You cracked open your **{item_name.title()}** and successfully hatched a new pet: **{pet_name}**!")
+            return
+
+        else:
+            await interaction.response.send_message(f"❌ You cannot 'use' a **{item_name.title()}** directly. (If it's a loot box, use `/open` instead!)", ephemeral=True)
 
     # --- CRAFTING, EQUIPPING & ENCHANTING ---
     @discord.app_commands.command(name="craft", description="Craft upgraded swords or armor using biome materials.")
