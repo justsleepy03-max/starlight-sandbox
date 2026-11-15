@@ -38,10 +38,10 @@ def get_cooldown_multiplier(user_id):
     return 1.0
 
 QUEST_POOL = [
-    {"id": "hunt_monsters", "title": "Monster Slayer", "desc": "Hunt 5 times in the wild", "target": 5, "type": "hunt", "reward_coins": 1000, "reward_xp": 500},
-    {"id": "gather_wood", "title": "Lumberjack Duty", "desc": "Collect 15 Wood", "target": 15, "type": "chop", "reward_coins": 800, "reward_xp": 400},
-    {"id": "catch_fish", "title": "Master Angler", "desc": "Catch 10 Fish", "target": 10, "type": "fish", "reward_coins": 800, "reward_xp": 400},
-    {"id": "mine_ore", "title": "Master Miner", "desc": "Mine 10 Iron Ore", "target": 10, "type": "mine", "reward_coins": 1200, "reward_xp": 600},
+    {"id": "hunt_monsters", "title": "Monster Slayer", "desc": "Hunt 5 times in the wild", "target": 5, "type": "hunt", "reward_coins": 1000, "reward_xp": 500, "min_area": 1},
+    {"id": "gather_wood", "title": "Lumberjack Duty", "desc": "Collect 15 Wood", "target": 15, "type": "chop", "reward_coins": 800, "reward_xp": 400, "min_area": 1},
+    {"id": "catch_fish", "title": "Master Angler", "desc": "Catch 10 Fish", "target": 10, "type": "fish", "reward_coins": 800, "reward_xp": 400, "min_area": 1},
+    {"id": "mine_ore", "title": "Master Miner", "desc": "Mine 10 Iron Ore", "target": 10, "type": "mine", "reward_coins": 1200, "reward_xp": 600, "min_area": 5},
 ]
 
 AREA_BIOMES = {
@@ -487,16 +487,24 @@ class RpgCog(commands.Cog):
         if "active_quest" not in p:
             p["active_quest"] = None
         active = p["active_quest"]
+        
         if not active:
-            selected = random.choice(QUEST_POOL)
-            area = p.get("area", 1)
+            player_area = p.get("area", 1)
+            # Filter pool based on player's current area
+            available_quests = [q for q in QUEST_POOL if player_area >= q.get("min_area", 1)]
+            
+            if not available_quests:
+                available_quests = [QUEST_POOL[0]] # Fallback
+                
+            selected = random.choice(available_quests)
             p["active_quest"] = {
                 "id": selected["id"], "title": selected["title"], "desc": selected["desc"],
                 "type": selected["type"], "progress": 0, "target": selected["target"],
-                "reward_coins": selected["reward_coins"] * area, "reward_xp": selected["reward_xp"] * area
+                "reward_coins": selected["reward_coins"] * player_area, "reward_xp": selected["reward_xp"] * player_area
             }
             update_player(uid, p)
             active = p["active_quest"]
+            
         embed = discord.Embed(title="📜 Active Quest", color=discord.Color.gold())
         embed.add_field(name=active["title"], value=f"*{active['desc']}*\n\n**Progress:** {active['progress']}/{active['target']}", inline=False)
         await interaction.response.send_message(embed=embed)
