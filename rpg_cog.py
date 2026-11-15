@@ -264,6 +264,10 @@ class RpgCog(commands.Cog):
         view = RPGActionView(self, uid)
         await interaction.response.send_message(embed=embed, view=view)
 
+    @discord.app_commands.command(name="hunt", description="Hunt monsters in your current biome.")
+    async def hunt(self, interaction: discord.Interaction):
+        await self.execute_hunt(interaction)
+
     async def execute_hunt(self, interaction: discord.Interaction):
         uid = str(interaction.user.id)
         p = get_player(uid)
@@ -286,6 +290,10 @@ class RpgCog(commands.Cog):
         
         await interaction.response.send_message(f"⚔️ **Hunt in {biome['name']}**: +🪙 {earned_coins:,} | +⭐ {earned_xp:,} XP | +{drop_qty}x {biome_drop.title()}{level_msg}", ephemeral=False)
 
+    @discord.app_commands.command(name="adventure", description="Embark on an epic adventure in your current biome.")
+    async def adventure(self, interaction: discord.Interaction):
+        await self.execute_adventure(interaction)
+
     async def execute_adventure(self, interaction: discord.Interaction):
         uid = str(interaction.user.id)
         p = get_player(uid)
@@ -307,6 +315,10 @@ class RpgCog(commands.Cog):
         
         await interaction.response.send_message(f"🗺️ **Adventure in {biome['name']}**: +🪙 {earned_coins:,} | +⭐ {earned_xp:,} XP | +{drop_qty}x {biome_drop.title()}{level_msg}", ephemeral=False)
 
+    @discord.app_commands.command(name="chop", description="Collect wood from the local woods.")
+    async def chop(self, interaction: discord.Interaction):
+        await self.execute_chop(interaction)
+
     async def execute_chop(self, interaction: discord.Interaction):
         uid = str(interaction.user.id)
         p = get_player(uid)
@@ -316,6 +328,10 @@ class RpgCog(commands.Cog):
         level_msg = self._check_level_up(p)
         update_player(uid, p)
         await interaction.response.send_message(f"🪓 You collected **{wood}x Wood**!{level_msg}", ephemeral=False)
+
+    @discord.app_commands.command(name="fish", description="Catch fish from the local waters.")
+    async def fish(self, interaction: discord.Interaction):
+        await self.execute_fish(interaction)
 
     async def execute_fish(self, interaction: discord.Interaction):
         uid = str(interaction.user.id)
