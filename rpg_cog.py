@@ -524,6 +524,19 @@ class RpgCog(commands.Cog):
         update_player(uid, p)
         await interaction.response.send_message(f"🎉 Quest Completed! Received 🪙 {active['reward_coins']:,} coins!{level_msg}")
 
+    @discord.app_commands.command(name="abandonquest", description="Abandon your current active quest to take on a new one.")
+    async def abandonquest(self, interaction: discord.Interaction):
+        uid = str(interaction.user.id)
+        p = get_player(uid)
+        
+        if not p.get("active_quest"):
+            await interaction.response.send_message("❌ You don't have an active quest to abandon!", ephemeral=True)
+            return
+            
+        p["active_quest"] = None
+        update_player(uid, p)
+        await interaction.response.send_message("🗑️ You have abandoned your active quest. Use `/quest` to pick up a new one matching your current area!")
+
     # --- LOOT BOX OPENING SYSTEM ---
     @discord.app_commands.command(name="open", description="Open a loot box from your inventory.")
     @app_commands.describe(box_tier="Choose the tier of loot box to open")
