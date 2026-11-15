@@ -173,8 +173,8 @@ class HelpView(discord.ui.View):
     @discord.ui.button(label="⚔️ RPG Core", style=discord.ButtonStyle.primary, custom_id="help_rpg")
     async def rpg_help(self, interaction: discord.Interaction, button: discord.ui.Button):
         embed = discord.Embed(title="✨ Starlight Sandbox - RPG Core Commands", color=discord.Color.blurple())
-        embed.add_field(name="Actions & Hub", value="`/profile` - View stats & action hub\n`/hunt` - Hunt monsters in current biome\n`/adventure` - Embark on an epic adventure\n`/chop` - Collect wood\n`/fish` - Catch fish", inline=False)
-        embed.add_field(name="Progression & Economy", value="`/area` - View or travel between biomes\n`/shop` - Browse interactive shop catalog\n`/buy` - Purchase shop items\n`/inventory` - Check items & materials\n`/bal` - Check wallet & bank\n`/daily` - Claim daily coins\n`/open` - Open loot boxes\n`/use` - Use potions & hatch eggs\n`/craft` - Craft gear using biome materials\n`/equip-gear` - Equip weapons & armor\n`/enchant` - Upgrade gear stats", inline=False)
+        embed.add_field(name="Actions & Hub", value="`/profile` - View stats & action hub\n`/hunt` - Hunt monsters in current biome\n`/adventure` - Embark on an epic adventure\n`/chop` - Collect wood\n`/fish` - Catch fish\n`/mine` - Mine iron ore (Area 5+)", inline=False)
+        embed.add_field(name="Progression & Economy", value="`/area` - View or travel between biomes\n`/shop` - Browse interactive shop catalog\n`/buy` - Purchase shop items\n`/inventory` - Check items & materials\n`/bal` - Check wallet & bank\n`/daily` - Claim daily coins\n`/open` - Open loot boxes\n`/use` - Use potions & hatch eggs\n`/craft` - Craft gear using biome materials\n`/enchant` - Upgrade gear stats", inline=False)
         await interaction.response.edit_message(embed=embed, view=self)
 
     @discord.ui.button(label="🎉 Party Games", style=discord.ButtonStyle.success, custom_id="help_party")
@@ -326,6 +326,22 @@ class RpgCog(commands.Cog):
         level_msg = self._check_level_up(p)
         update_player(uid, p)
         await interaction.response.send_message(f"🎣 You caught **{fish_caught}x Fish**!{level_msg}", ephemeral=False)
+
+    @discord.app_commands.command(name="mine", description="Mine iron ore and rare crystals (Requires Area 5+).")
+    async def mine(self, interaction: discord.Interaction):
+        uid = str(interaction.user.id)
+        p = get_player(uid)
+        area = p.get("area", 1)
+        if area < 5:
+            await interaction.response.send_message("❌ Mining requires you to be in **Area 5 (Crystal Caverns)** or higher!", ephemeral=True)
+            return
+        
+        ore_mined = random.randint(2, 5) * area
+        p["inventory"]["iron ore"] = p["inventory"].get("iron ore", 0) + ore_mined
+        self._update_quest_progress(p, "mine", ore_mined)
+        level_msg = self._check_level_up(p)
+        update_player(uid, p)
+        await interaction.response.send_message(f"⛏️ You mined **{ore_mined}x Iron Ore**!{level_msg}", ephemeral=False)
 
     @discord.app_commands.command(name="area", description="View your current area, biomes, unlocks, or travel to a new area.")
     @discord.app_commands.describe(target_area="Area number to travel to")
@@ -665,7 +681,6 @@ class RpgCog(commands.Cog):
             await interaction.response.send_message(f"❌ You must craft Tier {current_tier + 1} first before jumping to Tier {tier}!", ephemeral=True)
             return
 
-        # Simple crafting validation example
         cost = tier * 10
         material = AREA_BIOMES.get(tier, {}).get("drop", "soft bark")
         
@@ -677,6 +692,20 @@ class RpgCog(commands.Cog):
         p[f"{gear_type}_tier"] = tier
         update_player(uid, p)
         await interaction.response.send_message(f"⚒️ Successfully crafted **Tier {tier} {gear_type.title()}** using {cost}x {material.title()}!")
+
+    @discord.app_commands.command(name="enchant", description="Enchant your gear using magic essences.")
+    async def enchant(self, interaction: discord.Interaction):
+        uid = str(interaction.user.id)
+        p = get_player(uid)
+        area = p.get("area", 1)
+        if area < 2:
+            await interaction.response.send_message("❌ Enchanting unlocks at **Area 2**!", ephemeral=True)
+            return
+        
+        p["max_hp"] += 10
+        p["hp"] = p["max_hp"]
+        update_player(uid, p)
+        await interaction.response.send_message(f"✨ Enchanted successfully! Max HP permanently increased to **{p['max_hp']}**.")
 
 async def setup(bot):
     await bot.add_cog(RpgCog(bot))
