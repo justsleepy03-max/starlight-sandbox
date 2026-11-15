@@ -5,7 +5,7 @@ class QuestsCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         
-        # Define quests with their required minimum unlocked area
+        # Define quests with their required minimum unlocked area using correct brackets
         self.quest_pool = [
             {"name": "Goblin Woods Patrol", "rank": "F", "min_area": 1, "desc": "Secure the perimeter."},
             {"name": "The Crystal Cavern Run", "rank": "E", "min_area": 5, "desc": "Mine 10 Iron Ore & gather crystals."},
@@ -15,7 +15,7 @@ class QuestsCog(commands.Cog):
     @discord.app_commands.command(name="questboard", description="View available active side quests!")
     async def questboard(self, interaction: discord.Interaction):
         # Temporary placeholder for player area tier
-        player_area = 1  # This will check your database once integrated!
+        player_area = 1  # Will link to your database next!
 
         embed = discord.Embed(
             title="📜 Starlight Quest Board",
