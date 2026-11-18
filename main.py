@@ -21,6 +21,7 @@ class StarlightBot(commands.Bot):
         await self.load_extension("marketplace_cog")
         await self.load_extension("guilds_cog")
         await self.load_extension("dungeons_cog")  # Added 100-Floor Starlight Spire Cog!
+        await self.load_extension("area_expansions_cog")  # Added Area-Locked Expansion Commands!
         
         TEST_GUILD_ID = 1570758404476244120
         guild = discord.Object(id=TEST_GUILD_ID)
