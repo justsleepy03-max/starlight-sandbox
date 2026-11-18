@@ -144,7 +144,7 @@ class InventoryCog(commands.Cog):
   def __init__(self, bot):
     self.bot = bot
 
-  @commands.slash_command(
+  @discord.slash_command(
       name="inventory", description="Open your interactive Starlight inventory."
   )
   async def inventory(self, ctx: discord.ApplicationContext):
