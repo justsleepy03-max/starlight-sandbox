@@ -216,16 +216,22 @@ class RpgCog(commands.Cog):
 
     def get_shop_embed(self, page):
         if page == 1:
-            embed = discord.Embed(title="🛒 Starlight Shop - Page 1/3 (Essentials)", color=discord.Color.blue())
-            items_text = "🧪 **life potion** | 🪙 25\n🛡️ **basic armor** | 🪙 200\n⚔️ **basic sword** | 🪙 150\n🐎 **basic horse** | 🪙 500\n🔑 **dungeon key** | 🪙 5,000\n🌱 **seed** | 🪙 4,000"
-            embed.add_field(name="Catalog", value=items_text, inline=False)
+            embed = discord.Embed(title="🛒 Starlight Shop - Page 1/3 (Swords & Armors)", color=discord.Color.blue())
+            swords_text = "\n".join([f"⚔️ **{data['name']}** (T{tier}) | 🪙 {data['price']:,}" for tier, data in SWORDS.items()])
+            armors_text = "\n".join([f"🛡️ **{data['name']}** (T{tier}) | 🪙 {data['price']:,}" for tier, data in ARMORS.items()])
+            embed.add_field(name="Swords (Tiers 1–15)", value=swords_text, inline=True)
+            embed.add_field(name="Armor Sets (Tiers 1–15)", value=armors_text, inline=True)
         elif page == 2:
-            embed = discord.Embed(title="🛒 Starlight Shop - Page 2/3 (Lootboxes & Eggs)", color=discord.Color.blue())
-            items_text = "📦 **common lootbox** | 🪙 800\n📦 **uncommon lootbox** | 🪙 6,000\n📦 **rare lootbox** | 🪙 40,000\n📦 **epic lootbox** | 🪙 150,000\n\n🥚 **common egg** | 🪙 1,000\n🥚 **golden egg** | 🪙 15,000\n🥚 **celestial egg** | 🪙 75,000"
-            embed.add_field(name="Catalog", value=items_text, inline=False)
+            embed = discord.Embed(title="🛒 Starlight Shop - Page 2/3 (Eggs & Utilities)", color=discord.Color.blue())
+            eggs_text = "\n".join([f"🥚 **{name}** | 🪙 {data['price']:,}\n*{data['desc']}*" for name, data in PET_EGGS.items()])
+            misc_text = "\n".join([f"🧪 **{name}** | 🪙 {data['price']:,}\n*{data['desc']}*" for name, data in MISC_ITEMS.items() if "lootbox" not in name])
+            embed.add_field(name="Pet Eggs (Incl. Transcendent)", value=eggs_text, inline=False)
+            embed.add_field(name="Utilities, Consumables & Boosts", value=misc_text, inline=False)
         else:
-            embed = discord.Embed(title="✨ Starlight Shop - Page 3/3 (Exclusive Bundles)", color=discord.Color.purple())
-            bundles_text = "\n\n".join([f"🎁 **{b_name}** | 🪙 {data['price']}\n*Contents: {', '.join(data['contents'].keys())}*" for b_name, data in BUNDLES.items()])
+            embed = discord.Embed(title="✨ Starlight Shop - Page 3/3 (Lootboxes & Bundles)", color=discord.Color.purple())
+            lootboxes_text = "\n".join([f"📦 **{name}** | 🪙 {data['price']:,}\n*{data['desc']}*" for name, data in MISC_ITEMS.items() if "lootbox" in name])
+            bundles_text = "\n\n".join([f"🎁 **{b_name}** | 🪙 {data['price']:,}\n*Contents: {', '.join(data['contents'].keys())}*" for b_name, data in BUNDLES.items()])
+            embed.add_field(name="Lootboxes", value=lootboxes_text, inline=False)
             embed.add_field(name="Starlight Bundles", value=bundles_text, inline=False)
         return embed
 
@@ -356,7 +362,7 @@ class RpgCog(commands.Cog):
 
     # --- EXPANDED CRAFTING & GEAR TIERS SYSTEM ---
     @discord.app_commands.command(name="craft", description="Craft higher tier swords and armor using your gathered materials.")
-    @app_commands.describe(gear_type="Choose whether to craft a sword or armor", target_tier="Target tier to forge (1 to 10)")
+    @app_commands.describe(gear_type="Choose whether to craft a sword or armor", target_tier="Target tier to forge (2 to 15)")
     @app_commands.choices(gear_type=[
         app_commands.Choice(name="Sword", value="sword"),
         app_commands.Choice(name="Armor", value="armor")
@@ -365,8 +371,8 @@ class RpgCog(commands.Cog):
         uid = str(interaction.user.id)
         p = get_player(uid)
 
-        if target_tier < 2 or target_tier > 10:
-            await interaction.response.send_message("❌ You can forge gear tiers from **Tier 2 up to Tier 10**! (Tier 1 is bought in the shop).", ephemeral=True)
+        if target_tier < 2 or target_tier > 15:
+            await interaction.response.send_message("❌ You can forge gear tiers from **Tier 2 up to Tier 15**!", ephemeral=True)
             return
 
         current_key = f"{gear_type}_tier"
@@ -380,7 +386,6 @@ class RpgCog(commands.Cog):
             await interaction.response.send_message(f"❌ You must forge gear sequentially! Your next available tier is **Tier {current_tier + 1}**.", ephemeral=True)
             return
 
-        # Cost scaling formula based on tier
         wood_cost = target_tier * 15
         iron_cost = target_tier * 10 if target_tier >= 5 else 0
         coin_cost = target_tier * 1000
@@ -396,7 +401,6 @@ class RpgCog(commands.Cog):
             await interaction.response.send_message(f"❌ Not enough iron ore! You need **{iron_cost}x Iron Ore** (You have {inv.get('iron ore', 0)}).", ephemeral=True)
             return
 
-        # Deduct costs
         p["wallet"] -= coin_cost
         inv["wood"] -= wood_cost
         if iron_cost > 0:
@@ -454,17 +458,21 @@ class RpgCog(commands.Cog):
         p = get_player(uid)
         item_lower = item_name.lower().strip()
         
-        SHOP_PRICES = {
-            "life potion": 25, "basic armor": 200, "basic sword": 150, "basic horse": 500,
-            "dungeon key": 5000, "seed": 4000, "common lootbox": 800, "uncommon lootbox": 6000,
-            "rare lootbox": 40000, "epic lootbox": 150000, "common egg": 1000, "golden egg": 15000, "celestial egg": 75000
-        }
+        # Build master lookup dynamically from items.py catalogs
+        master_catalog = {}
+        for s in SWORDS.values(): master_catalog[s["name"].lower()] = s["price"]
+        for a in ARMORS.values(): master_catalog[a["name"].lower()] = a["price"]
+        for h in HORSES.values(): master_catalog[h["name"].lower()] = h["price"]
+        for name, data in PET_EGGS.items(): master_catalog[name.lower()] = data["price"]
+        for name, data in MISC_ITEMS.items(): master_catalog[name.lower()] = data["price"]
+        for name, data in BUNDLES.items(): master_catalog[name.lower()] = data["price"]
         
-        if item_lower not in SHOP_PRICES:
+        if item_lower not in master_catalog:
             await interaction.response.send_message(f"❌ Unknown item **'{item_name}'**! Check `/shop`.", ephemeral=True)
             return
             
-        total_cost = SHOP_PRICES[item_lower] * quantity
+        item_price = master_catalog[item_lower]
+        total_cost = item_price * quantity
         if p["wallet"] < total_cost:
             await interaction.response.send_message(f"❌ You need **🪙 {total_cost:,}** coins, but your wallet has **🪙 {p['wallet']:,}**.", ephemeral=True)
             return
