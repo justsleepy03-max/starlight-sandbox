@@ -160,10 +160,18 @@ class HelpView(discord.ui.View):
     async def rpg_help(self, interaction: discord.Interaction, button: discord.ui.Button):
         embed = discord.Embed(title="✨ Starlight Sandbox - RPG Core Commands", color=discord.Color.blurple())
         embed.add_field(name="Actions & Hub", value="`/profile` - View stats & action hub\n`/hunt` - Hunt monsters in current biome\n`/adventure` - Embark on an epic adventure\n`/chop` - Collect wood\n`/fish` - Catch fish\n`/mine` - Mine iron ore (Area 5+)", inline=False)
-        embed.add_field(name="Progression & Economy", value="`/area` - View or travel between biomes\n`/shop` - Browse interactive shop catalog\n`/buy` - Purchase shop items\n`/inventory` - Check items & materials\n`/bal` - Check wallet & bank\n`/daily` - Claim daily coins\n`/open` - Open loot boxes\n`/craft` - Craft higher gear tiers using materials\n`/enchant` - Upgrade gear stats", inline=False)
+        embed.add_field(name="Progression & Economy", value="`/area` - View or travel between biomes\n`/shop` - Browse interactive shop catalog\n`/buy` - Purchase shop items\n`/inventory` - Check items & materials\n`/bal` - Check wallet & bank\n`/daily` - Claim daily coins\n`/open` - Open loot boxes\n`/craft` - Craft higher gear tiers using materials\n`/quest` / `/claimquest` - Manage quests", inline=False)
         await interaction.response.edit_message(embed=embed, view=self)
 
-    @discord.ui.button(label="🎉 Party Games", style=discord.ButtonStyle.success, custom_id="help_party")
+    @discord.ui.button(label="🗺️ Area Expansions", style=discord.ButtonStyle.success, custom_id="help_areas")
+    async def areas_help(self, interaction: discord.Interaction, button: discord.ui.Button):
+        embed = discord.Embed(title="🗺️ Starlight Sandbox - Area Expansions (Areas 2–15)", color=discord.Color.green())
+        embed.add_field(name="Early Biomes (Areas 2–6)", value="`/enchant`, `/training`, `/axe`, `/net`, `/pickup`, `/ladder`, `/farm`, `/multidice`, `/cook`, `/casino`, `/bowsaw`, `/boat`, `/pickaxe`", inline=False)
+        embed.add_field(name="Mid-High Biomes (Areas 7–12)", value="`/refine`, `/big_arena`, `/alchemy`, `/tractor`, `/wheel`, `/chainsaw`, `/bigboat`, `/drill`, `/minintboss`, `/time_travel`, `/temporal_forge`, `/greenhouse`, `/dynamite`, `/petadventure`, `/ultraining`, `/badge`", inline=False)
+        embed.add_field(name="Endgame Biomes (Areas 13–15)", value="`/transmute`, `/hunt_hardmode`, `/adventure_hardmode`, `/big_dice`, `/time_jump`, `/transcend`", inline=False)
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    @discord.ui.button(label="🎉 Party Games", style=discord.ButtonStyle.secondary, custom_id="help_party")
     async def party_help(self, interaction: discord.Interaction, button: discord.ui.Button):
         embed = discord.Embed(title="🎉 Starlight Sandbox - Party Games Suite", color=discord.Color.gold())
         embed.add_field(name="Interactive Games", value="`/cah` - Play Cards Against Humanity with buttons\n`/trivia` - Test knowledge with interactive buttons\n`/connect4` - Play Connect Four board with column buttons\n`/bingo` - Generate a community Bingo card", inline=False)
@@ -224,7 +232,11 @@ class RpgCog(commands.Cog):
     @discord.app_commands.command(name="help", description="View all available Starlight Sandbox commands and games.")
     async def help(self, interaction: discord.Interaction):
         uid = str(interaction.user.id)
-        embed = discord.Embed(title="🌟 Starlight Sandbox - Help Hub", description="Select a category using the buttons below to explore all RPG commands and Party Games!", color=discord.Color.blurple())
+        embed = discord.Embed(
+            title="🌟 Starlight Sandbox - Help Hub", 
+            description="Select a category using the buttons below to explore the core RPG loop, area-locked expansion commands, and party games!", 
+            color=discord.Color.blurple()
+        )
         embed.set_footer(text="Starlight Community Bot • Button Navigation")
         view = HelpView(self, uid)
         await interaction.response.send_message(embed=embed, view=view)
