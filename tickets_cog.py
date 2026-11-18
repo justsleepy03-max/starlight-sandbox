@@ -28,12 +28,13 @@ def save_ticket_config(data):
         json.dump(data, f, indent=4)
 
 
-async def generate_and_send_transcript(channel: discord.TextChannel, closed_by: discord.Member):
+async def generate_and_send_transcript(channel: discord.TextChannel, closed_by: discord.Member, is_manual_save: bool = False):
     """Compiles channel history into a .txt transcript, backs it up to disk, and posts to the log channel."""
     os.makedirs(TRANSCRIPTS_DIR, exist_ok=True)
     now = datetime.now(timezone.utc)
     timestamp_str = now.strftime("%Y-%m-%d_%H-%M-%S")
-    filename = f"{channel.name}_{timestamp_str}.txt"
+    action_label = "manual_transcript" if is_manual_save else "closed"
+    filename = f"{channel.name}_{action_label}_{timestamp_str}.txt"
     filepath = os.path.join(TRANSCRIPTS_DIR, filename)
 
     lines = [
@@ -42,8 +43,8 @@ async def generate_and_send_transcript(channel: discord.TextChannel, closed_by: 
         "====================================================",
         f"Ticket Channel : #{channel.name} ({channel.id})",
         f"Topic / Reason : {channel.topic or 'No topic recorded'}",
-        f"Closed By      : {closed_by} ({closed_by.id})",
-        f"Closed At (UTC): {now.strftime('%Y-%m-%d %H:%M:%S UTC')}",
+        f"Triggered By   : {closed_by} ({closed_by.id})",
+        f"Time (UTC)     : {now.strftime('%Y-%m-%d %H:%M:%S UTC')}",
         "====================================================\n",
     ]
 
@@ -73,14 +74,12 @@ async def generate_and_send_transcript(channel: discord.TextChannel, closed_by: 
 
     transcript_text = "\n".join(lines)
 
-    # Save backup copy to Railway volume
     try:
         with open(filepath, "w", encoding="utf-8") as f:
             f.write(transcript_text)
     except Exception as e:
         print(f"Warning: Could not write local transcript backup: {e}")
 
-    # Find configured log channel, or fall back to #ticket-logs / #transit-logs
     guild = channel.guild
     config = load_ticket_config()
     log_channel_id = config.get(str(guild.id), {}).get("log_channel_id")
@@ -93,13 +92,14 @@ async def generate_and_send_transcript(channel: discord.TextChannel, closed_by: 
         )
 
     if log_channel:
+        title_text = "📑 Manual Ticket Transcript Export" if is_manual_save else "📑 Ticket Transcript & Transit Log"
         embed = discord.Embed(
-            title="📑 Ticket Transcript & Transit Log",
+            title=title_text,
             color=discord.Color.from_str("#F1C40F"),
             timestamp=now
         )
         embed.add_field(name="Ticket", value=f"`#{channel.name}`", inline=True)
-        embed.add_field(name="Closed By", value=closed_by.mention, inline=True)
+        embed.add_field(name="Triggered By", value=closed_by.mention, inline=True)
         embed.add_field(name="Messages Logged", value=str(message_count), inline=True)
         embed.add_field(name="Details", value=channel.topic or "No reason recorded", inline=False)
         embed.set_footer(text="Starlight Sandbox • Automated Transit Log")
@@ -133,7 +133,7 @@ class TicketReasonModal(discord.ui.Modal, title="Open a Support Ticket"):
         )
 
 
-# --- PERSISTENT CLOSE BUTTON VIEW ---
+# --- PERSISTENT TICKET CONTROL VIEW (CLOSE + TRANSCRIPT BUTTONS) ---
 class CloseTicketView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -145,19 +145,29 @@ class CloseTicketView(discord.ui.View):
         custom_id="starlight:close_ticket"
     )
     async def close_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # Disable the button immediately so it can't be clicked twice during logging
-        button.disabled = True
+        for child in self.children:
+            child.disabled = True
         await interaction.response.edit_message(view=self)
         await interaction.followup.send("📑 Generating transcript and closing this ticket channel in **5 seconds**...")
 
-        # Compile and dispatch transcript before channel deletion
-        await generate_and_send_transcript(interaction.channel, interaction.user)
+        await generate_and_send_transcript(interaction.channel, interaction.user, is_manual_save=False)
 
         await asyncio.sleep(5)
         try:
             await interaction.channel.delete(reason=f"Ticket closed by {interaction.user}")
         except discord.Forbidden:
             await interaction.followup.send("❌ I don't have permission to delete this channel.", ephemeral=True)
+
+    @discord.ui.button(
+        label="Transcript",
+        style=discord.ButtonStyle.secondary,
+        emoji="📜",
+        custom_id="starlight:manual_transcript"
+    )
+    async def manual_transcript(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(thinking=True, ephemeral=True)
+        await generate_and_send_transcript(interaction.channel, interaction.user, is_manual_save=True)
+        await interaction.followup.send("✅ A live transcript of this ticket has been exported and sent to the logs channel!", ephemeral=True)
 
 
 # --- PERSISTENT OPEN TICKET PANEL VIEW ---
@@ -220,7 +230,7 @@ async def create_ticket_channel(
         description=f"{header_line}\n\nThis is a secure, private channel between staff and the member. No DMs required!",
         color=discord.Color.blurple()
     )
-    embed.set_footer(text="Click the button below when this issue is resolved.")
+    embed.set_footer(text="Use the buttons below to export a transcript or close the ticket.")
 
     await ticket_channel.send(
         content=f"{target_member.mention} {opened_by.mention if opened_by != target_member else ''}",
