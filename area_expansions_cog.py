@@ -354,15 +354,6 @@ class AreaExpansionsCog(commands.Cog):
         update_player(uid, p)
         await interaction.response.send_message("🧨 Detonated vault and looted **5x Starlight Essence**!")
 
-    @discord.app_commands.command(name="pets", description="Manage and view your celestial companions.")
-    async def pets(self, interaction: discord.Interaction):
-        uid = str(interaction.user.id)
-        p = get_player(uid)
-        if not self._verify_area(p, 12):
-            await interaction.response.send_message("❌ Requires Area 12 or higher!", ephemeral=True)
-            return
-        await interaction.response.send_message("🐾 Sanctuary Pet management interface opened successfully.")
-
     @discord.app_commands.command(name="petadventure", description="Send your companions on autonomous sanctuary adventures.")
     async def petadventure(self, interaction: discord.Interaction):
         uid = str(interaction.user.id)
