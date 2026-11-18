@@ -92,7 +92,7 @@ async def generate_and_send_transcript(channel: discord.TextChannel, closed_by: 
         )
 
     if log_channel:
-        title_text = "📑 Manual Ticket Transcript Export" if is_manual_save else "📑 Ticket Transcript & Transit Log"
+        title_text = "📑 Manual Ticket Transcript Export" if is_manual_save else "🔒 Ticket Closed & Transit Log"
         embed = discord.Embed(
             title=title_text,
             color=discord.Color.from_str("#F1C40F"),
@@ -148,15 +148,16 @@ class CloseTicketView(discord.ui.View):
         for child in self.children:
             child.disabled = True
         await interaction.response.edit_message(view=self)
-        await interaction.followup.send("📑 Generating transcript and closing this ticket channel in **5 seconds**...")
 
+        # Generate transcript and send to logs, but DO NOT delete the channel
         await generate_and_send_transcript(interaction.channel, interaction.user, is_manual_save=False)
-
-        await asyncio.sleep(5)
-        try:
-            await interaction.channel.delete(reason=f"Ticket closed by {interaction.user}")
-        except discord.Forbidden:
-            await interaction.followup.send("❌ I don't have permission to delete this channel.", ephemeral=True)
+        
+        embed = discord.Embed(
+            title="🔒 Ticket Closed",
+            description=f"This ticket has been marked as closed by {interaction.user.mention}. The transcript has been archived to the logs channel. You may delete this channel whenever you are ready.",
+            color=discord.Color.from_str("#F1C40F")
+        )
+        await interaction.followup.send(embed=embed)
 
     @discord.ui.button(
         label="Transcript",
