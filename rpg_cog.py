@@ -214,6 +214,15 @@ class RpgCog(commands.Cog):
 
         return "".join(messages)
 
+    def _get_gear_multipliers(self, p):
+        sword_origin = p.get("sword_origin", "shop")
+        armor_origin = p.get("armor_origin", "shop")
+        
+        coin_mult = 1.15 if sword_origin == "crafted" else 1.0     # Crafted swords give +15% hunt coins
+        gathering_mult = 1.25 if armor_origin == "crafted" else 1.0 # Crafted armor gives +25% gathering yield
+        
+        return coin_mult, gathering_mult
+
     def get_shop_embed(self, page):
         if page == 1:
             embed = discord.Embed(title="🛒 Starlight Shop - Page 1/3 (Swords & Armors)", color=discord.Color.blue())
@@ -255,10 +264,13 @@ class RpgCog(commands.Cog):
         unlocked_area = p.get("unlocked_area", area)
         biome = AREA_BIOMES.get(area, {}).get("name", "Unknown Biome")
         
+        s_origin = f"({p.get('sword_origin', 'shop').upper()})"
+        a_origin = f"({p.get('armor_origin', 'shop').upper()})"
+        
         embed = discord.Embed(title=f"✨ {interaction.user.display_name}'s Profile & Action Hub", color=discord.Color.blurple())
         embed.add_field(name="PROGRESS", value=f"**Level:** {p['level']} ({p['xp']}/{p['level'] * 250} XP)\n**Current Biome:** Area {area} ({biome})\n**Highest Unlocked Area:** Tier {unlocked_area}", inline=False)
         embed.add_field(name="STATS", value=f"❤️ **HP:** {p['hp']}/{p['max_hp']}", inline=False)
-        embed.add_field(name="GEAR", value=f"⚔️ **Sword Tier:** {p.get('sword_tier', 1)}\n🛡️ **Armor Tier:** {p.get('armor_tier', 1)}", inline=False)
+        embed.add_field(name="GEAR", value=f"⚔️ **Sword Tier:** {p.get('sword_tier', 1)} {s_origin}\n🛡️ **Armor Tier:** {p.get('armor_tier', 1)} {a_origin}", inline=False)
         embed.add_field(name="CURRENCY", value=f"🪙 **Wallet:** {p['wallet']:,}\n🏛️ **Bank:** {p['bank']:,}", inline=False)
         embed.set_footer(text="Use the interactive buttons below to play directly from your profile!")
 
@@ -276,8 +288,9 @@ class RpgCog(commands.Cog):
         biome = AREA_BIOMES.get(area, {})
         biome_drop = biome.get("drop", "common material")
         
+        coin_mult, _ = self._get_gear_multipliers(p)
         sword_bonus = p.get("sword_tier", 1) * 8
-        earned_coins = (random.randint(20, 45) + sword_bonus) * area
+        earned_coins = int(((random.randint(20, 45) + sword_bonus) * area) * coin_mult)
         earned_xp = random.randint(15, 30) * area
         drop_qty = random.randint(1, 3) * area
         
@@ -289,7 +302,8 @@ class RpgCog(commands.Cog):
         level_msg = self._check_level_up(p)
         update_player(uid, p)
         
-        await interaction.response.send_message(f"⚔️ **Hunt in {biome['name']}**: +🪙 {earned_coins:,} | +⭐ {earned_xp:,} XP | +{drop_qty}x {biome_drop.title()}{level_msg}", ephemeral=False)
+        crafted_tag = " (✨ Crafted Bonus!)" if p.get("sword_origin") == "crafted" else ""
+        await interaction.response.send_message(f"⚔️ **Hunt in {biome['name']}**: +🪙 {earned_coins:,}{crafted_tag} | +⭐ {earned_xp:,} XP | +{drop_qty}x {biome_drop.title()}{level_msg}", ephemeral=False)
 
     @discord.app_commands.command(name="adventure", description="Embark on an epic adventure in your current biome.")
     async def adventure(self, interaction: discord.Interaction):
@@ -302,8 +316,9 @@ class RpgCog(commands.Cog):
         biome = AREA_BIOMES.get(area, {})
         biome_drop = biome.get("drop", "common material")
         
+        coin_mult, _ = self._get_gear_multipliers(p)
         sword_bonus = p.get("sword_tier", 1) * 20
-        earned_coins = (random.randint(80, 180) + sword_bonus) * area
+        earned_coins = int(((random.randint(80, 180) + sword_bonus) * area) * coin_mult)
         earned_xp = random.randint(60, 130) * area
         drop_qty = random.randint(3, 7) * area
         
@@ -323,12 +338,14 @@ class RpgCog(commands.Cog):
     async def execute_chop(self, interaction: discord.Interaction):
         uid = str(interaction.user.id)
         p = get_player(uid)
-        wood = random.randint(2, 6) * p.get("area", 1)
+        _, gathering_mult = self._get_gear_multipliers(p)
+        wood = int(random.randint(2, 6) * p.get("area", 1) * gathering_mult)
         p["inventory"]["wood"] = p["inventory"].get("wood", 0) + wood
         self._update_quest_progress(p, "chop", wood)
         level_msg = self._check_level_up(p)
         update_player(uid, p)
-        await interaction.response.send_message(f"🪓 You collected **{wood}x Wood**!{level_msg}", ephemeral=False)
+        crafted_tag = " (✨ Crafted Armor Bonus!)" if p.get("armor_origin") == "crafted" else ""
+        await interaction.response.send_message(f"🪓 You collected **{wood}x Wood**!{crafted_tag}{level_msg}", ephemeral=False)
 
     @discord.app_commands.command(name="fish", description="Catch fish from the local waters.")
     async def fish(self, interaction: discord.Interaction):
@@ -353,12 +370,14 @@ class RpgCog(commands.Cog):
             await interaction.response.send_message("❌ Mining requires you to be in **Area 5 (Crystal Caverns)** or higher!", ephemeral=True)
             return
         
-        ore_mined = random.randint(2, 5) * area
+        _, gathering_mult = self._get_gear_multipliers(p)
+        ore_mined = int(random.randint(2, 5) * area * gathering_mult)
         p["inventory"]["iron ore"] = p["inventory"].get("iron ore", 0) + ore_mined
         self._update_quest_progress(p, "mine", ore_mined)
         level_msg = self._check_level_up(p)
         update_player(uid, p)
-        await interaction.response.send_message(f"⛏️ You mined **{ore_mined}x Iron Ore**!{level_msg}", ephemeral=False)
+        crafted_tag = " (✨ Crafted Armor Bonus!)" if p.get("armor_origin") == "crafted" else ""
+        await interaction.response.send_message(f"⛏️ You mined **{ore_mined}x Iron Ore**!{crafted_tag}{level_msg}", ephemeral=False)
 
     # --- EXPANDED CRAFTING & GEAR TIERS SYSTEM ---
     @discord.app_commands.command(name="craft", description="Craft higher tier swords and armor using your gathered materials.")
@@ -407,12 +426,15 @@ class RpgCog(commands.Cog):
             inv["iron ore"] -= iron_cost
 
         p[current_key] = target_tier
+        p[f"{gear_type}_origin"] = "crafted"  # Mark as crafted for passive perks!
+        
         self._update_quest_progress(p, "craft", 1)
         level_msg = self._check_level_up(p)
         update_player(uid, p)
 
         emoji = "⚔️" if gear_type == "sword" else "🛡️"
-        await interaction.response.send_message(f"🎉 **FORGING SUCCESSFUL!** You successfully crafted **Tier {target_tier} {gear_type.title()}** {emoji}!\n*Costs paid: 🪙 {coin_cost:,} coins, {wood_cost}x Wood{f', {iron_cost}x Iron Ore' if iron_cost > 0 else ''}*{level_msg}")
+        bonus_perk = " (+15% Hunt Coins)" if gear_type == "sword" else " (+25% Gathering Yield)"
+        await interaction.response.send_message(f"🎉 **FORGING SUCCESSFUL!** You successfully crafted **Tier {target_tier} {gear_type.title()}** {emoji}!\n*Perk Unlocked:* **{bonus_perk}**\n*Costs paid: 🪙 {coin_cost:,} coins, {wood_cost}x Wood{f', {iron_cost}x Iron Ore' if iron_cost > 0 else ''}*{level_msg}")
 
     @discord.app_commands.command(name="area", description="View your current area, biomes, unlocks, or travel to a new area.")
     @app_commands.describe(target_area="Area number to travel to")
@@ -460,18 +482,19 @@ class RpgCog(commands.Cog):
         
         # Build master lookup dynamically from items.py catalogs
         master_catalog = {}
-        for s in SWORDS.values(): master_catalog[s["name"].lower()] = s["price"]
-        for a in ARMORS.values(): master_catalog[a["name"].lower()] = a["price"]
-        for h in HORSES.values(): master_catalog[h["name"].lower()] = h["price"]
-        for name, data in PET_EGGS.items(): master_catalog[name.lower()] = data["price"]
-        for name, data in MISC_ITEMS.items(): master_catalog[name.lower()] = data["price"]
-        for name, data in BUNDLES.items(): master_catalog[name.lower()] = data["price"]
+        for s in SWORDS.values(): master_catalog[s["name"].lower()] = s
+        for a in ARMORS.values(): master_catalog[a["name"].lower()] = a
+        for h in HORSES.values(): master_catalog[h["name"].lower()] = h
+        for name, data in PET_EGGS.items(): master_catalog[name.lower()] = {"price": data["price"]}
+        for name, data in MISC_ITEMS.items(): master_catalog[name.lower()] = {"price": data["price"]}
+        for name, data in BUNDLES.items(): master_catalog[name.lower()] = {"price": data["price"]}
         
         if item_lower not in master_catalog:
             await interaction.response.send_message(f"❌ Unknown item **'{item_name}'**! Check `/shop`.", ephemeral=True)
             return
             
-        item_price = master_catalog[item_lower]
+        item_data = master_catalog[item_lower]
+        item_price = item_data["price"]
         total_cost = item_price * quantity
         if p["wallet"] < total_cost:
             await interaction.response.send_message(f"❌ You need **🪙 {total_cost:,}** coins, but your wallet has **🪙 {p['wallet']:,}**.", ephemeral=True)
@@ -479,6 +502,13 @@ class RpgCog(commands.Cog):
             
         p["wallet"] -= total_cost
         inv = p.setdefault("inventory", {})
+        
+        # Check if bought item is a sword or armor to set origin to 'shop'
+        if any(item_lower == s["name"].lower() for s in SWORDS.values()):
+            p["sword_origin"] = "shop"
+        elif any(item_lower == a["name"].lower() for a in ARMORS.values()):
+            p["armor_origin"] = "shop"
+            
         inv[item_lower] = inv.get(item_lower, 0) + quantity
         update_player(uid, p)
         
