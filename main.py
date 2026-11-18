@@ -17,7 +17,8 @@ class StarlightBot(commands.Bot):
         await self.load_extension("tickets_cog")
         await self.load_extension("embed_cog")
         await self.load_extension("pets_cog")
-        await self.load_extension("inventory_cog")  # Added Starlight Inventory Cog!
+        await self.load_extension("inventory_cog")
+        await self.load_extension("marketplace_cog")  # Added Starlight Marketplace Cog!
         
         TEST_GUILD_ID = 1570758404476244120
         guild = discord.Object(id=TEST_GUILD_ID)
