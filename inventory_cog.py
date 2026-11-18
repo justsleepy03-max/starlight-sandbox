@@ -150,9 +150,9 @@ class InventoryCog(commands.Cog):
     self.bot = bot
 
   @app_commands.command(
-      name="inventory", description="Open your interactive Starlight inventory."
+      name="bag", description="Open your interactive Starlight inventory."
   )
-  async def inventory(self, interaction: discord.Interaction):
+  async def bag(self, interaction: discord.Interaction):
     uid = str(interaction.user.id)
     player_data = get_player(uid)
 
