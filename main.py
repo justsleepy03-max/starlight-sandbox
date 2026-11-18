@@ -13,7 +13,7 @@ class StarlightBot(commands.Bot):
     async def setup_hook(self):
         await self.load_extension("rpg_cog")
         await self.load_extension("party_cog")
-        # await self.load_extension("quests_cog") # Removed duplicate cog
+        await self.load_extension("quests_cog")  # Unlocked quests cog!
         await self.load_extension("tickets_cog")
         await self.load_extension("embed_cog")
         await self.load_extension("pets_cog")
