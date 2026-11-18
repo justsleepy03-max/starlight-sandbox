@@ -1,11 +1,12 @@
 import discord
+from discord import app_commands
 from discord.ext import commands
-from discord.ui import Button, View
+from database import get_player, update_player
 
 
-class InventoryView(View):
+class InventoryView(discord.ui.View):
 
-  def __init__(self, user_id, player_data):
+  def __init__(self, user_id: str, player_data: dict):
     super().__init__(timeout=180)
     self.user_id = user_id
     self.player_data = player_data
@@ -15,7 +16,7 @@ class InventoryView(View):
   def update_components(self):
     self.clear_items()
 
-    inv_btn = Button(
+    inv_btn = discord.ui.Button(
         label="Items/Materials",
         style=(
             discord.ButtonStyle.primary
@@ -26,7 +27,7 @@ class InventoryView(View):
     inv_btn.callback = self.switch_to_inventory
     self.add_item(inv_btn)
 
-    equip_btn = Button(
+    equip_btn = discord.ui.Button(
         label="Equipment",
         style=(
             discord.ButtonStyle.primary
@@ -37,7 +38,7 @@ class InventoryView(View):
     equip_btn.callback = self.switch_to_equipment
     self.add_item(equip_btn)
 
-    stats_btn = Button(
+    stats_btn = discord.ui.Button(
         label="Stats & Wallet",
         style=(
             discord.ButtonStyle.primary
@@ -48,11 +49,15 @@ class InventoryView(View):
     stats_btn.callback = self.switch_to_stats
     self.add_item(stats_btn)
 
-  async def switch_to_inventory(self, interaction: discord.Interaction):
-    if interaction.user.id != self.user_id:
-      return await interaction.response.send_message(
-          "This isn't your inventory!", ephemeral=True
+  async def interaction_check(self, interaction: discord.Interaction) -> bool:
+    if str(interaction.user.id) != self.user_id:
+      await interaction.response.send_message(
+          "❌ This isn't your inventory!", ephemeral=True
       )
+      return False
+    return True
+
+  async def switch_to_inventory(self, interaction: discord.Interaction):
     self.current_category = "inventory"
     self.update_components()
     await interaction.response.edit_message(
@@ -60,10 +65,6 @@ class InventoryView(View):
     )
 
   async def switch_to_equipment(self, interaction: discord.Interaction):
-    if interaction.user.id != self.user_id:
-      return await interaction.response.send_message(
-          "This isn't your inventory!", ephemeral=True
-      )
     self.current_category = "equipment"
     self.update_components()
     await interaction.response.edit_message(
@@ -71,10 +72,6 @@ class InventoryView(View):
     )
 
   async def switch_to_stats(self, interaction: discord.Interaction):
-    if interaction.user.id != self.user_id:
-      return await interaction.response.send_message(
-          "This isn't your inventory!", ephemeral=True
-      )
     self.current_category = "stats"
     self.update_components()
     await interaction.response.edit_message(
@@ -94,12 +91,14 @@ class InventoryView(View):
       if not inventory:
         embed.add_field(
             name="Empty",
-            value="Your inventory has no items yet. Go questing or gathering!",
+            value=(
+                "Your inventory has no items yet. Go questing or gathering!"
+            ),
             inline=False,
         )
       else:
         items_list = "\n".join(
-            [f"• **{item}**: {qty}" for item, qty in inventory.items()]
+            [f"• **{item.title()}**: {qty}" for item, qty in inventory.items()]
         )
         embed.add_field(name="Stored Goods", value=items_list, inline=False)
 
@@ -107,7 +106,7 @@ class InventoryView(View):
       embed.description = "Your currently equipped gear loadout:"
       equipment = self.player_data.get("equipment", {})
       for slot, item in equipment.items():
-        display_item = item if item else "None Equipped"
+        display_item = item.title() if item else "None Equipped"
         embed.add_field(
             name=slot.capitalize(), value=display_item, inline=True
         )
@@ -126,12 +125,18 @@ class InventoryView(View):
       )
       embed.add_field(
           name="❤️ HP",
-          value=f"{self.player_data.get('hp', 100)} / {self.player_data.get('max_hp', 100)}",
+          value=(
+              f"{self.player_data.get('hp', 100)} /"
+              f" {self.player_data.get('max_hp', 100)}"
+          ),
           inline=True,
       )
       embed.add_field(
           name="⭐ Level",
-          value=f"Level {self.player_data.get('level', 1)} (XP: {self.player_data.get('xp', 0)})",
+          value=(
+              f"Level {self.player_data.get('level', 1)} (XP:"
+              f" {self.player_data.get('xp', 0):,})"
+          ),
           inline=True,
       )
 
@@ -144,18 +149,17 @@ class InventoryCog(commands.Cog):
   def __init__(self, bot):
     self.bot = bot
 
-  @discord.slash_command(
+  @app_commands.command(
       name="inventory", description="Open your interactive Starlight inventory."
   )
-  async def inventory(self, ctx: discord.ApplicationContext):
-    from __main__ import get_player
+  async def inventory(self, interaction: discord.Interaction):
+    uid = str(interaction.user.id)
+    player_data = get_player(uid)
 
-    player_data = get_player(ctx.author.id)
-
-    view = InventoryView(ctx.author.id, player_data)
+    view = InventoryView(uid, player_data)
     embed = view.build_embed()
-    await ctx.respond(embed=embed, view=view)
+    await interaction.response.send_message(embed=embed, view=view)
 
 
-def setup(bot):
-  bot.add_cog(InventoryCog(bot))
+async def setup(bot):
+  await bot.add_cog(InventoryCog(bot))
