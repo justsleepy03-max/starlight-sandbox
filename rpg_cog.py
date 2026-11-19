@@ -101,7 +101,7 @@ AREA_LEVEL_REQUIREMENTS = {
     1: 1, 2: 3, 3: 6, 4: 9, 5: 12, 6: 15, 7: 18, 8: 21, 9: 24, 10: 27, 11: 30, 12: 33, 13: 36, 14: 39, 15: 42
 }
 
-# --- INTERACTIVE VIEWS ---
+# --- INTERACTIVE VIEWS & MODALS ---
 class RPGActionView(discord.ui.View):
     def __init__(self, cog, user_id):
         super().__init__(timeout=180)
@@ -131,6 +131,74 @@ class RPGActionView(discord.ui.View):
         await self.cog.execute_fish(interaction)
 
 
+class EconomyAmountModal(discord.ui.Modal):
+    def __init__(self, cog, user_id: str, action: str, source_view: "EconomyView"):
+        title = "Deposit Coins to Bank" if action == "deposit" else "Withdraw Coins to Wallet"
+        super().__init__(title=title)
+        self.cog = cog
+        self.user_id = user_id
+        self.action = action
+        self.source_view = source_view
+
+        self.amount_input = discord.ui.TextInput(
+            label="Amount (or type 'all')",
+            placeholder="e.g. 500 or all",
+            required=True,
+            max_length=20,
+        )
+        self.add_item(self.amount_input)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        if str(interaction.user.id) != self.user_id:
+            await interaction.response.send_message(
+                "❌ This economy menu doesn't belong to you! Use `/economy` to open your own.",
+                ephemeral=True,
+            )
+            return
+
+        raw = self.amount_input.value.strip().lower()
+        if self.action == "deposit":
+            ok, msg, embed = self.cog.perform_deposit(self.user_id, raw, interaction.user.display_name)
+        else:
+            ok, msg, embed = self.cog.perform_withdraw(self.user_id, raw, interaction.user.display_name)
+
+        if not ok:
+            await interaction.response.send_message(msg, ephemeral=True)
+            return
+
+        await interaction.response.edit_message(embed=embed, view=self.source_view)
+        await interaction.followup.send(msg, ephemeral=True)
+
+
+class EconomyView(discord.ui.View):
+    def __init__(self, cog, user_id: str):
+        super().__init__(timeout=180)
+        self.cog = cog
+        self.user_id = user_id
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if str(interaction.user.id) != self.user_id:
+            await interaction.response.send_message(
+                "❌ This economy menu doesn't belong to you! Use `/economy` to open your own.",
+                ephemeral=True,
+            )
+            return False
+        return True
+
+    @discord.ui.button(label="💰 Balance", style=discord.ButtonStyle.primary, custom_id="econ_bal")
+    async def balance_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        embed = self.cog.build_balance_embed(self.user_id, interaction.user.display_name)
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    @discord.ui.button(label="🏦 Deposit", style=discord.ButtonStyle.success, custom_id="econ_deposit")
+    async def deposit_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(EconomyAmountModal(self.cog, self.user_id, "deposit", self))
+
+    @discord.ui.button(label="💸 Withdraw", style=discord.ButtonStyle.secondary, custom_id="econ_withdraw")
+    async def withdraw_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(EconomyAmountModal(self.cog, self.user_id, "withdraw", self))
+
+
 class HelpView(discord.ui.View):
     def __init__(self, cog, user_id):
         super().__init__(timeout=120)
@@ -147,7 +215,7 @@ class HelpView(discord.ui.View):
     async def rpg_help(self, interaction: discord.Interaction, button: discord.ui.Button):
         embed = discord.Embed(title="✨ Starlight Sandbox - RPG Core Commands", color=discord.Color.blurple())
         embed.add_field(name="Actions & Hub", value="`/profile` - View stats & action hub\n`/hunt` - Hunt monsters in current biome\n`/adventure` - Embark on an epic adventure\n`/gather wood` - Collect wood\n`/gather fish` - Catch fish\n`/gather mine` - Mine iron ore (Area 5+)\n`/heal` - Use potions or life boosts to recover HP", inline=False)
-        embed.add_field(name="Progression & Economy", value="`/area` - View or travel between biomes\n`/shop` - Browse interactive shop catalog\n`/buy` - Purchase shop items\n`/inventory` - Check items & materials\n`/bal` - Check wallet & bank\n`/daily` - Claim daily coins\n`/open` - Open loot boxes\n`/craft` - Craft higher gear tiers using materials\n`/quest view` / `claim` / `abandon` - Manage quests", inline=False)
+        embed.add_field(name="Progression & Economy", value="`/area` - View or travel between biomes\n`/shop` - Browse interactive shop catalog\n`/buy` - Purchase shop items\n`/inventory` - Check items & materials\n`/economy` - Balance, deposit & withdraw buttons\n`/daily` - Claim daily coins\n`/open` - Open loot boxes\n`/craft` - Craft higher gear tiers using materials\n`/quest view` / `claim` / `abandon` - Manage quests", inline=False)
         await interaction.response.edit_message(embed=embed, view=self)
 
     @discord.ui.button(label="🗺️ Area Expansions", style=discord.ButtonStyle.success, custom_id="help_areas")
@@ -246,6 +314,72 @@ class RpgCog(commands.Cog):
             raw_dmg = random.randint(5, 12) * area
             mitigated = raw_dmg - int(armor_def * 0.5)
             return max(1, mitigated)
+
+    def build_balance_embed(self, uid: str, display_name: str) -> discord.Embed:
+        p = get_player(uid)
+        wallet = p.get("wallet", 0)
+        bank = p.get("bank", 0)
+        embed = discord.Embed(title=f"🪙 {display_name}'s Economy Hub", color=discord.Color.gold())
+        embed.add_field(
+            name="Balances",
+            value=f"🪙 **Wallet:** {wallet:,} coins\n🏛️ **Bank:** {bank:,} coins\n💎 **Total:** {wallet + bank:,} coins",
+            inline=False,
+        )
+        embed.set_footer(text="Use the buttons below to refresh balance, deposit, or withdraw.")
+        return embed
+
+    def perform_deposit(self, uid: str, raw_amount: str, display_name: str):
+        p = get_player(uid)
+        wallet = p.get("wallet", 0)
+        bank = p.get("bank", 0)
+
+        if raw_amount in ("all", "max"):
+            amount = wallet
+        else:
+            cleaned = raw_amount.replace(",", "")
+            if not cleaned.isdigit():
+                return False, "❌ Enter a positive number or `all`.", None
+            amount = int(cleaned)
+
+        if amount <= 0:
+            return False, "❌ You don't have any coins to deposit!", None
+        if amount > wallet:
+            return False, f"❌ You only have **🪙 {wallet:,}** coins in your wallet!", None
+
+        p["wallet"] = wallet - amount
+        p["bank"] = bank + amount
+        update_player(uid, p)
+        return True, f"🏦 Deposited **🪙 {amount:,}** coins into your bank!", self.build_balance_embed(uid, display_name)
+
+    def perform_withdraw(self, uid: str, raw_amount: str, display_name: str):
+        p = get_player(uid)
+        wallet = p.get("wallet", 0)
+        bank = p.get("bank", 0)
+
+        if raw_amount in ("all", "max"):
+            amount = bank
+        else:
+            cleaned = raw_amount.replace(",", "")
+            if not cleaned.isdigit():
+                return False, "❌ Enter a positive number or `all`.", None
+            amount = int(cleaned)
+
+        if amount <= 0:
+            return False, "❌ You don't have any coins in your bank to withdraw!", None
+        if amount > bank:
+            return False, f"❌ You only have **🪙 {bank:,}** coins in your bank!", None
+
+        p["bank"] = bank - amount
+        p["wallet"] = wallet + amount
+        update_player(uid, p)
+        return True, f"💸 Withdrew **🪙 {amount:,}** coins to your wallet!", self.build_balance_embed(uid, display_name)
+
+    @discord.app_commands.command(name="economy", description="Check your balance, deposit coins, or withdraw coins using buttons.")
+    async def economy(self, interaction: discord.Interaction):
+        uid = str(interaction.user.id)
+        embed = self.build_balance_embed(uid, interaction.user.display_name)
+        view = EconomyView(self, uid)
+        await interaction.response.send_message(embed=embed, view=view)
 
     @discord.app_commands.command(name="help", description="View all available Starlight Sandbox commands and games.")
     async def help(self, interaction: discord.Interaction):
@@ -578,14 +712,6 @@ class RpgCog(commands.Cog):
         inv = p.get("inventory", {})
         embed = discord.Embed(title=f"🎒 {interaction.user.display_name}'s Inventory", color=discord.Color.gold())
         embed.description = "Your inventory is empty!" if not inv else "\n".join([f"• **{item.title()}**: {qty:,}" for item, qty in inv.items()])
-        await interaction.response.send_message(embed=embed)
-
-    @discord.app_commands.command(name="bal", description="Check your wallet and bank balances.")
-    async def bal(self, interaction: discord.Interaction):
-        uid = str(interaction.user.id)
-        p = get_player(uid)
-        embed = discord.Embed(title=f"🪙 {interaction.user.display_name}'s Balance", color=discord.Color.gold())
-        embed.add_field(name="Bank & Wallet", value=f"🪙 **Wallet:** {p['wallet']:,} coins\n🏛️ **Bank:** {p['bank']:,} coins", inline=False)
         await interaction.response.send_message(embed=embed)
 
     @discord.app_commands.command(name="daily", description="Claim your 24-hour daily reward.")
