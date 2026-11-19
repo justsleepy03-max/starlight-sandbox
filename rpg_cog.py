@@ -553,4 +553,44 @@ class RpgCog(commands.Cog):
         app_commands.Choice(name="Epic Lootbox", value="epic lootbox")
     ])
     async def open_box(self, interaction: discord.Interaction, box_tier: str):
-        uid = str(
+    uid = str(interaction.user.id)
+        p = get_player(uid)
+        inv = p.setdefault("inventory", {})
+
+        if inv.get(box_tier, 0) < 1:
+            await interaction.response.send_message(
+                f"❌ You don't have any **{box_tier.title()}** in your inventory!",
+                ephemeral=True,
+            )
+            return
+
+        inv[box_tier] -= 1
+        if inv[box_tier] <= 0:
+            inv.pop(box_tier, None)
+
+        loot_ranges = {
+            "common lootbox": (250, 750, 1, 3),
+            "uncommon lootbox": (750, 2000, 2, 5),
+            "rare lootbox": (2000, 5000, 3, 8),
+            "epic lootbox": (5000, 15000, 5, 12),
+        }
+        min_c, max_c, min_m, max_m = loot_ranges.get(box_tier, (250, 750, 1, 3))
+
+        coins_found = random.randint(min_c, max_c)
+        area = p.get("area", 1)
+        biome_drop = AREA_BIOMES.get(area, {}).get("drop", "wood")
+        mat_qty = random.randint(min_m, max_m)
+
+        p["wallet"] = p.get("wallet", 0) + coins_found
+        inv[biome_drop] = inv.get(biome_drop, 0) + mat_qty
+
+        level_msg = self._check_level_up(p)
+        update_player(uid, p)
+
+        await interaction.response.send_message(
+            f"📦 You opened a **{box_tier.title()}** and found **🪙 {coins_found:,} coins** and **{mat_qty}x {biome_drop.title()}**!{level_msg}"
+        )
+
+
+async def setup(bot):
+    await bot.add_cog(RpgCog(bot))
