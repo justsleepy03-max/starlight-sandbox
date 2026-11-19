@@ -36,6 +36,7 @@ BETA_BUNDLE_ITEMS = {
     "uncommon lootbox": 2,
     "rare lootbox": 2,
     "epic lootbox": 1,
+    "golden egg": 1,
     "wood": 25,
     "fish": 20,
     "iron ore": 15,
