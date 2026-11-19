@@ -93,7 +93,7 @@ class ShopCog(commands.Cog):
             plush_text = "\n".join([f"🧸 **{name}** | 🪙 {data['price']:,}\n*{data['desc']}*" for name, data in PLUSHIES.items()])
             embed.add_field(name="Hoarder's Plushie Collection", value=plush_text, inline=False)
 
-        embed.set_footer(text="Use /buy item_name:<name> quantity:<amount> to purchase!")
+        embed.set_footer(text="Use /buy item_name:<name> quantity:<amount> to purchase! (Use /economy for wallet & bank)")
         return embed
 
     async def item_name_autocomplete(self, interaction: discord.Interaction, current: str):
@@ -133,14 +133,15 @@ class ShopCog(commands.Cog):
         item_data = master_catalog[item_lower]
         item_price = item_data["price"]
         total_cost = item_price * quantity
-        if p["wallet"] < total_cost:
+        wallet = p.get("wallet", 0)
+        if wallet < total_cost:
             await interaction.response.send_message(
-                f"❌ You need **🪙 {total_cost:,}** coins, but your wallet has **🪙 {p['wallet']:,}**.",
+                f"❌ You need **🪙 {total_cost:,}** coins, but your wallet has **🪙 {wallet:,}**.",
                 ephemeral=True
             )
             return
 
-        p["wallet"] -= total_cost
+        p["wallet"] = wallet - total_cost
         inv = p.setdefault("inventory", {})
 
         if any(item_lower == s["name"].lower() for s in SWORDS.values()):
