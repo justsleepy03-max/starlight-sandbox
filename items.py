@@ -74,3 +74,29 @@ BUNDLES = {
     "hunter's cache": {"price": 750, "contents": {"goblin_fang": 5, "slime_jelly": 5, "shadow_pelt": 2}},
     "cosmic catalyst bundle": {"price": 1500, "contents": {"dragon_scale": 1, "serpentarius": 1, "stardust": 250}}
 }
+
+RESOURCES = {
+    "wood": {"price": 15, "desc": "Sturdy timber for basic crafting."},
+    "fish": {"price": 20, "desc": "Freshly caught from local waters."},
+    "iron ore": {"price": 60, "desc": "Unrefined metal for mid-tier forging."},
+    "soft bark": {"price": 30, "desc": "Whispering Woods material."},
+    "ancient stone": {"price": 50, "desc": "Crumbling Ruins relic fragment."},
+    "river pearl": {"price": 85, "desc": "Sunken Riverbank gem."},
+    "crystal shard": {"price": 150, "desc": "Glimmering cavern crystal."},
+    "magma core": {"price": 400, "desc": "Volcanic Caldera heat source."},
+    "dragon scale": {"price": 1200, "desc": "Heat-forged scale from Dragon's Spire."},
+    "starlight essence": {"price": 2500, "desc": "Celestial Sanctuary energy."},
+    "void matter": {"price": 5000, "desc": "Unstable abyssal crafting material."},
+    "singularity core": {"price": 15000, "desc": "Endgame cosmic catalyst."}
+}
+
+PLUSHIES = {
+    "slime plushie": {"price": 2500, "desc": "Squishy, slightly damp, and very huggable."},
+    "goblin plushie": {"price": 5000, "desc": "Looks like it might steal your spare change."},
+    "alpha wolf plushie": {"price": 12000, "desc": "Fluffy miniature of the Whispering Woods boss."},
+    "starlight spirit plushie": {"price": 25000, "desc": "Glows softly in the dark. A fan favorite!"},
+    "shadow mouse plushie": {"price": 50000, "desc": "Sneaky collectible plush for true hoarders."},
+    "crystal golem plushie": {"price": 100000, "desc": "Surprisingly soft despite looking like solid rock."},
+    "ancient dragon plushie": {"price": 250000, "desc": "Stuffed with real fire-resistant fluff."},
+    "golden starlight plushie": {"price": 1000000, "desc": "Pure flexing rights. Limited sandbox edition."}
+}
