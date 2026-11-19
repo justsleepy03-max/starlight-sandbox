@@ -552,7 +552,7 @@ class RpgCog(commands.Cog):
         app_commands.Choice(name="Rare Lootbox", value="rare lootbox"),
         app_commands.Choice(name="Epic Lootbox", value="epic lootbox")
     ])
- async def open_box(self, interaction: discord.Interaction, box_tier: str):
+    async def open_box(self, interaction: discord.Interaction, box_tier: str):
         uid = str(interaction.user.id)
         p = get_player(uid)
         inv = p.setdefault("inventory", {})
