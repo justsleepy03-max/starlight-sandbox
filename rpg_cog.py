@@ -571,8 +571,10 @@ class RpgCog(commands.Cog):
     async def execute_hunt(self, interaction: discord.Interaction):
         uid = str(interaction.user.id)
         p = get_player(uid)
+        inv = p.setdefault("inventory", {})
         area = p.get("area", 1)
         biome = AREA_BIOMES.get(area, {})
+        biome_name = biome.get("name", "Unknown Biome")
         biome_drop = biome.get("drop", "common material")
         
         coin_mult, _ = self._get_gear_multipliers(p)
@@ -581,9 +583,9 @@ class RpgCog(commands.Cog):
         earned_xp = random.randint(15, 30) * area
         drop_qty = random.randint(1, 3) * area
         
-        p["wallet"] += earned_coins
-        p["xp"] += earned_xp
-        p["inventory"][biome_drop] = p["inventory"].get(biome_drop, 0) + drop_qty
+        p["wallet"] = p.get("wallet", 0) + earned_coins
+        p["xp"] = p.get("xp", 0) + earned_xp
+        inv[biome_drop] = inv.get(biome_drop, 0) + drop_qty
 
         dmg_taken = self._calculate_enemy_damage(p, encounter_type="mob")
         max_hp = p.get("max_hp", 100)
@@ -601,7 +603,7 @@ class RpgCog(commands.Cog):
         crafted_tag = " (✨ Crafted Bonus!)" if p.get("sword_origin") == "crafted" else ""
         low_hp_tip = "\n⚠️ *Low HP! Use `/heal` to patch yourself up.*" if p["hp"] <= max(10, int(p["max_hp"] * 0.25)) else ""
         await interaction.response.send_message(
-            f"⚔️ **Hunt in {biome['name']}**: +🪙 {earned_coins:,}{crafted_tag} | +⭐ {earned_xp:,} XP | +{drop_qty}x {biome_drop.title()}{hp_msg}{level_msg}{low_hp_tip}",
+            f"⚔️ **Hunt in {biome_name}**: +🪙 {earned_coins:,}{crafted_tag} | +⭐ {earned_xp:,} XP | +{drop_qty}x {biome_drop.title()}{hp_msg}{level_msg}{low_hp_tip}",
             ephemeral=False
         )
 
@@ -612,8 +614,10 @@ class RpgCog(commands.Cog):
     async def execute_adventure(self, interaction: discord.Interaction):
         uid = str(interaction.user.id)
         p = get_player(uid)
+        inv = p.setdefault("inventory", {})
         area = p.get("area", 1)
         biome = AREA_BIOMES.get(area, {})
+        biome_name = biome.get("name", "Unknown Biome")
         biome_drop = biome.get("drop", "common material")
         
         coin_mult, _ = self._get_gear_multipliers(p)
@@ -622,14 +626,14 @@ class RpgCog(commands.Cog):
         earned_xp = random.randint(60, 130) * area
         drop_qty = random.randint(3, 7) * area
         
-        p["wallet"] += earned_coins
-        p["xp"] += earned_xp
-        p["inventory"][biome_drop] = p["inventory"].get(biome_drop, 0) + drop_qty
+        p["wallet"] = p.get("wallet", 0) + earned_coins
+        p["xp"] = p.get("xp", 0) + earned_xp
+        inv[biome_drop] = inv.get(biome_drop, 0) + drop_qty
         
         level_msg = self._check_level_up(p)
         update_player(uid, p)
         
-        await interaction.response.send_message(f"🗺️ **Adventure in {biome['name']}**: +🪙 {earned_coins:,} | +⭐ {earned_xp:,} XP | +{drop_qty}x {biome_drop.title()}{level_msg}", ephemeral=False)
+        await interaction.response.send_message(f"🗺️ **Adventure in {biome_name}**: +🪙 {earned_coins:,} | +⭐ {earned_xp:,} XP | +{drop_qty}x {biome_drop.title()}{level_msg}", ephemeral=False)
 
     @hardmode_group.command(name="hunt", description="Hunt hardmode monsters in your current biome (Requires Area 13+).")
     async def hardmode_hunt(self, interaction: discord.Interaction):
@@ -728,9 +732,10 @@ class RpgCog(commands.Cog):
     async def execute_chop(self, interaction: discord.Interaction):
         uid = str(interaction.user.id)
         p = get_player(uid)
+        inv = p.setdefault("inventory", {})
         _, gathering_mult = self._get_gear_multipliers(p)
-        wood = int(random.randint(2, 6) * p.get("area", 1) * gathering_mult)
-        p["inventory"]["wood"] = p["inventory"].get("wood", 0) + wood
+        wood = max(1, int(random.randint(2, 6) * p.get("area", 1) * gathering_mult))
+        inv["wood"] = inv.get("wood", 0) + wood
         self._update_quest_progress(p, "chop", wood)
         level_msg = self._check_level_up(p)
         update_player(uid, p)
@@ -744,8 +749,9 @@ class RpgCog(commands.Cog):
     async def execute_fish(self, interaction: discord.Interaction):
         uid = str(interaction.user.id)
         p = get_player(uid)
+        inv = p.setdefault("inventory", {})
         fish_caught = random.randint(1, 4) * p.get("area", 1)
-        p["inventory"]["fish"] = p["inventory"].get("fish", 0) + fish_caught
+        inv["fish"] = inv.get("fish", 0) + fish_caught
         self._update_quest_progress(p, "fish", fish_caught)
         level_msg = self._check_level_up(p)
         update_player(uid, p)
@@ -760,9 +766,10 @@ class RpgCog(commands.Cog):
             await interaction.response.send_message("❌ Mining requires you to be in **Area 5 (Crystal Caverns)** or higher!", ephemeral=True)
             return
         
+        inv = p.setdefault("inventory", {})
         _, gathering_mult = self._get_gear_multipliers(p)
-        ore_mined = int(random.randint(2, 5) * area * gathering_mult)
-        p["inventory"]["iron ore"] = p["inventory"].get("iron ore", 0) + ore_mined
+        ore_mined = max(1, int(random.randint(2, 5) * area * gathering_mult))
+        inv["iron ore"] = inv.get("iron ore", 0) + ore_mined
         self._update_quest_progress(p, "mine", ore_mined)
         level_msg = self._check_level_up(p)
         update_player(uid, p)
@@ -770,7 +777,7 @@ class RpgCog(commands.Cog):
         await interaction.response.send_message(f"⛏️ You mined **{ore_mined}x Iron Ore**!{crafted_tag}{level_msg}", ephemeral=False)
 
     @discord.app_commands.command(name="area", description="View your current area, biomes, unlocks, or travel to a new area.")
-    @app_commands.describe(target_area="Area number to travel to")
+    @app_commands.describe(target_area="Area number to travel to (1–15)")
     async def area(self, interaction: discord.Interaction, target_area: int = None):
         uid = str(interaction.user.id)
         p = get_player(uid)
@@ -787,6 +794,10 @@ class RpgCog(commands.Cog):
             embed.description = "\n".join(lines)
             embed.set_footer(text="Use /area target_area:<num> to travel to your unlocked areas!")
             await interaction.response.send_message(embed=embed)
+            return
+
+        if target_area < 1 or target_area > 15:
+            await interaction.response.send_message("❌ Please choose a valid area number between **1** and **15**.", ephemeral=True)
             return
 
         if target_area > unlocked_area:
@@ -818,7 +829,7 @@ class RpgCog(commands.Cog):
             return
 
         bonus = 500 * p.get("area", 1)
-        p["wallet"] += bonus
+        p["wallet"] = p.get("wallet", 0) + bonus
         p["last_daily"] = now
         update_player(uid, p)
         await interaction.response.send_message(f"🎁 Claimed daily reward: 🪙 {bonus:,} coins!")
@@ -851,8 +862,8 @@ class RpgCog(commands.Cog):
         if not active or active["progress"] < active["target"]:
             await interaction.response.send_message("❌ No completed quest to claim!", ephemeral=True)
             return
-        p["wallet"] += active["reward_coins"]
-        p["xp"] += active["reward_xp"]
+        p["wallet"] = p.get("wallet", 0) + active["reward_coins"]
+        p["xp"] = p.get("xp", 0) + active["reward_xp"]
         p["active_quest"] = None
         level_msg = self._check_level_up(p)
         update_player(uid, p)
