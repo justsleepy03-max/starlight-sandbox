@@ -52,7 +52,11 @@ PET_EGGS = {
 }
 
 MISC_ITEMS = {
-    "life potion": {"price": 25, "desc": "Restore your life with /heal"},
+    "minor hp bottle": {"price": 100, "desc": "Restores +35 HP with /heal (quick top-up)."},
+    "greater hp bottle": {"price": 1250, "desc": "Restores +120 HP with /heal (solid recovery)."},
+    "starlight elixir": {"price": 12000, "desc": "Restores +250 HP and grants +25 Max HP via /heal."},
+    "celestial vitality draught": {"price": 150000, "desc": "Restores +500 HP and grants +75 Max HP via /heal."},
+    "transcendent life flask": {"price": 750000, "desc": "Restores +1,000 HP and grants +150 Max HP via /heal."},
     "dungeon key": {"price": 5000, "desc": "Required to enter the /dungeon"},
     "lottery ticket": {"price": 50, "desc": "To join the /lottery"},
     "seed": {"price": 4000, "desc": "Used to /farm"},
@@ -62,10 +66,7 @@ MISC_ITEMS = {
     "rare lootbox": {"price": 40000, "desc": "Contains many items, open with /open"},
     "epic lootbox": {"price": 150000, "desc": "Contains a lot of items, open with /open"},
     "edgy lootbox": {"price": 420666, "desc": "Contains A LOT of items, open with /open"},
-    "mystery artifact crate": {"price": 20000, "desc": "Drops rare crafting materials from random biomes."},
-    "life boost a": {"price": 10000, "desc": "Provides +10 LIFE (temporary)"},
-    "life boost b": {"price": 100000, "desc": "Provides +25 LIFE (temporary)"},
-    "life boost c": {"price": 1000000, "desc": "Provides +50 LIFE (temporary)"}
+    "mystery artifact crate": {"price": 20000, "desc": "Drops rare crafting materials from random biomes."}
 }
 
 BUNDLES = {
