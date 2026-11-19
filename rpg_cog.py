@@ -6,7 +6,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from database import get_player, update_player
-from items import SWORDS, ARMORS, HORSES, MISC_ITEMS, PET_EGGS, BUNDLES
+from items import SWORDS, ARMORS, HORSES, MISC_ITEMS, PET_EGGS, BUNDLES, RESOURCES, PLUSHIES
 
 DATA_DIR = "/app/data"
 PETS_FILE = os.path.join(DATA_DIR, "pets.json")
@@ -115,33 +115,38 @@ class RPGActionView(discord.ui.View):
         await self.cog.execute_fish(interaction)
 
 
+class ShopSelect(discord.ui.Select):
+    def __init__(self, cog, user_id):
+        self.cog = cog
+        self.user_id = user_id
+        options = [
+            discord.SelectOption(label="Page 1: Weapons & Armor", value="1", emoji="⚔️", description="Tiers 1–15 Swords & Armor Sets"),
+            discord.SelectOption(label="Page 2: Eggs & Utilities", value="2", emoji="🥚", description="Pet Eggs, Potions & Life Boosts"),
+            discord.SelectOption(label="Page 3: Lootboxes & Bundles", value="3", emoji="📦", description="Mystery Crates & Starter Packs"),
+            discord.SelectOption(label="Page 4: Crafting Resources", value="4", emoji="🪵", description="Wood, Ores & Rare Biome Materials"),
+            discord.SelectOption(label="Page 5: Collectible Plushies", value="5", emoji="🧸", description="Rare Plushies to Hoard & Flex"),
+        ]
+        super().__init__(placeholder="Select a shop category (Pages 1–5)...", min_values=1, max_values=1, options=options)
+
+    async def callback(self, interaction: discord.Interaction):
+        page = int(self.values[0])
+        embed = self.cog.get_shop_embed(page)
+        await interaction.response.edit_message(embed=embed, view=self.view)
+
+
 class ShopPaginationView(discord.ui.View):
     def __init__(self, cog, user_id, current_page=1):
         super().__init__(timeout=120)
         self.cog = cog
         self.user_id = user_id
         self.current_page = current_page
+        self.add_item(ShopSelect(cog, user_id))
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if str(interaction.user.id) != self.user_id:
             await interaction.response.send_message("❌ You cannot control someone else's shop menu!", ephemeral=True)
             return False
         return True
-
-    @discord.ui.button(label="◀️ Page 1", style=discord.ButtonStyle.primary, custom_id="shop_p1")
-    async def p1_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        embed = self.cog.get_shop_embed(1)
-        await interaction.response.edit_message(embed=embed, view=ShopPaginationView(self.cog, self.user_id, 1))
-
-    @discord.ui.button(label="Page 2", style=discord.ButtonStyle.primary, custom_id="shop_p2")
-    async def p2_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        embed = self.cog.get_shop_embed(2)
-        await interaction.response.edit_message(embed=embed, view=ShopPaginationView(self.cog, self.user_id, 2))
-
-    @discord.ui.button(label="Page 3 ▶️", style=discord.ButtonStyle.primary, custom_id="shop_p3")
-    async def p3_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        embed = self.cog.get_shop_embed(3)
-        await interaction.response.edit_message(embed=embed, view=ShopPaginationView(self.cog, self.user_id, 3))
 
 
 class HelpView(discord.ui.View):
@@ -225,23 +230,33 @@ class RpgCog(commands.Cog):
 
     def get_shop_embed(self, page):
         if page == 1:
-            embed = discord.Embed(title="🛒 Starlight Shop - Page 1/3 (Swords & Armors)", color=discord.Color.blue())
+            embed = discord.Embed(title="🛒 Starlight Shop - Page 1/5 (Weapons & Armor)", color=discord.Color.blue())
             swords_text = "\n".join([f"⚔️ **{data['name']}** (T{tier}) | 🪙 {data['price']:,}" for tier, data in SWORDS.items()])
             armors_text = "\n".join([f"🛡️ **{data['name']}** (T{tier}) | 🪙 {data['price']:,}" for tier, data in ARMORS.items()])
             embed.add_field(name="Swords (Tiers 1–15)", value=swords_text, inline=True)
             embed.add_field(name="Armor Sets (Tiers 1–15)", value=armors_text, inline=True)
         elif page == 2:
-            embed = discord.Embed(title="🛒 Starlight Shop - Page 2/3 (Eggs & Utilities)", color=discord.Color.blue())
+            embed = discord.Embed(title="🛒 Starlight Shop - Page 2/5 (Eggs & Utilities)", color=discord.Color.blue())
             eggs_text = "\n".join([f"🥚 **{name}** | 🪙 {data['price']:,}\n*{data['desc']}*" for name, data in PET_EGGS.items()])
             misc_text = "\n".join([f"🧪 **{name}** | 🪙 {data['price']:,}\n*{data['desc']}*" for name, data in MISC_ITEMS.items() if "lootbox" not in name])
             embed.add_field(name="Pet Eggs (Incl. Transcendent)", value=eggs_text, inline=False)
             embed.add_field(name="Utilities, Consumables & Boosts", value=misc_text, inline=False)
-        else:
-            embed = discord.Embed(title="✨ Starlight Shop - Page 3/3 (Lootboxes & Bundles)", color=discord.Color.purple())
+        elif page == 3:
+            embed = discord.Embed(title="✨ Starlight Shop - Page 3/5 (Lootboxes & Bundles)", color=discord.Color.purple())
             lootboxes_text = "\n".join([f"📦 **{name}** | 🪙 {data['price']:,}\n*{data['desc']}*" for name, data in MISC_ITEMS.items() if "lootbox" in name])
             bundles_text = "\n\n".join([f"🎁 **{b_name}** | 🪙 {data['price']:,}\n*Contents: {', '.join(data['contents'].keys())}*" for b_name, data in BUNDLES.items()])
             embed.add_field(name="Lootboxes", value=lootboxes_text, inline=False)
             embed.add_field(name="Starlight Bundles", value=bundles_text, inline=False)
+        elif page == 4:
+            embed = discord.Embed(title="🪵 Starlight Shop - Page 4/5 (Crafting Resources)", color=discord.Color.green())
+            res_text = "\n".join([f"🧱 **{name}** | 🪙 {data['price']:,}\n*{data['desc']}*" for name, data in RESOURCES.items()])
+            embed.add_field(name="Raw Materials & Catalysts", value=res_text, inline=False)
+        else:
+            embed = discord.Embed(title="🧸 Starlight Shop - Page 5/5 (Collectible Plushies)", color=discord.Color.magenta())
+            plush_text = "\n".join([f"🧸 **{name}** | 🪙 {data['price']:,}\n*{data['desc']}*" for name, data in PLUSHIES.items()])
+            embed.add_field(name="Hoarder's Plushie Collection", value=plush_text, inline=False)
+
+        embed.set_footer(text="Use /buy item_name:<name> quantity:<amount> to purchase!")
         return embed
 
     @discord.app_commands.command(name="help", description="View all available Starlight Sandbox commands and games.")
@@ -479,7 +494,11 @@ class RpgCog(commands.Cog):
         uid = str(interaction.user.id)
         p = get_player(uid)
         item_lower = item_name.lower().strip()
-        
+
+        if quantity < 1:
+            await interaction.response.send_message("❌ Quantity must be at least 1!", ephemeral=True)
+            return
+
         # Build master lookup dynamically from items.py catalogs
         master_catalog = {}
         for s in SWORDS.values(): master_catalog[s["name"].lower()] = s
@@ -488,30 +507,32 @@ class RpgCog(commands.Cog):
         for name, data in PET_EGGS.items(): master_catalog[name.lower()] = {"price": data["price"]}
         for name, data in MISC_ITEMS.items(): master_catalog[name.lower()] = {"price": data["price"]}
         for name, data in BUNDLES.items(): master_catalog[name.lower()] = {"price": data["price"]}
-        
+        for name, data in RESOURCES.items(): master_catalog[name.lower()] = {"price": data["price"]}
+        for name, data in PLUSHIES.items(): master_catalog[name.lower()] = {"price": data["price"]}
+
         if item_lower not in master_catalog:
             await interaction.response.send_message(f"❌ Unknown item **'{item_name}'**! Check `/shop`.", ephemeral=True)
             return
-            
+
         item_data = master_catalog[item_lower]
         item_price = item_data["price"]
         total_cost = item_price * quantity
         if p["wallet"] < total_cost:
             await interaction.response.send_message(f"❌ You need **🪙 {total_cost:,}** coins, but your wallet has **🪙 {p['wallet']:,}**.", ephemeral=True)
             return
-            
+
         p["wallet"] -= total_cost
         inv = p.setdefault("inventory", {})
-        
+
         # Check if bought item is a sword or armor to set origin to 'shop'
         if any(item_lower == s["name"].lower() for s in SWORDS.values()):
             p["sword_origin"] = "shop"
         elif any(item_lower == a["name"].lower() for a in ARMORS.values()):
             p["armor_origin"] = "shop"
-            
+
         inv[item_lower] = inv.get(item_lower, 0) + quantity
         update_player(uid, p)
-        
+
         await interaction.response.send_message(f"🛒 Successfully purchased **{quantity}x {item_name.title()}** for **🪙 {total_cost:,} coins**!")
 
     @discord.app_commands.command(name="inventory", description="Check your items and materials.")
@@ -520,7 +541,7 @@ class RpgCog(commands.Cog):
         p = get_player(uid)
         inv = p.get("inventory", {})
         embed = discord.Embed(title=f"🎒 {interaction.user.display_name}'s Inventory", color=discord.Color.gold())
-        embed.description = "Your inventory is empty!" if not inv else "\n".join([f"• **{item.title()}**: {qty}" for item, qty in inv.items()])
+        embed.description = "Your inventory is empty!" if not inv else "\n".join([f"• **{item.title()}**: {qty:,}" for item, qty in inv.items()])
         await interaction.response.send_message(embed=embed)
 
     @discord.app_commands.command(name="bal", description="Check your wallet and bank balances.")
@@ -616,11 +637,12 @@ class RpgCog(commands.Cog):
         area = p.get("area", 1)
         biome = AREA_BIOMES.get(area, {})
         drop_item = biome.get("drop", "soft bark")
+        inv[drop_item] = inv.get(drop_item, 0) + (2 * area)
         coins = random.randint(200, 1000) * area
         p["wallet"] += coins
-        
+
         update_player(uid, p)
-        await interaction.response.send_message(f"📦 Opened **{box_tier.title()}**! Found 🪙 +{coins:,} coins and materials.")
+        await interaction.response.send_message(f"📦 Opened **{box_tier.title()}**! Found 🪙 +{coins:,} coins and +{2 * area}x {drop_item.title()}.")
 
 async def setup(bot):
     await bot.add_cog(RpgCog(bot))
