@@ -80,11 +80,11 @@ AREA_BIOMES = {
 }
 
 AREA_UNLOCKS = {
-    1: "Default: /hunt, /adventure, /gather wood, /gather fish, /shop, /inventory, /quest view",
+    1: "Default: /hunt, /adventure, /chop, /fish, /shop, /inventory, /quest view",
     2: "/enchant, /area, /training",
     3: "/axe, /net, /pickup",
     4: "/ladder, /guild, /farm",
-    5: "/gather mine, /multidice, /cook, /casino",
+    5: "/mine, /multidice, /cook, /casino",
     6: "/bowsaw, /boat, /pickaxe",
     7: "/refine, /big arena, /alchemy",
     8: "/tractor, /wheel",
@@ -92,8 +92,8 @@ AREA_UNLOCKS = {
     10: "/drill, /minintboss",
     11: "/time travel, /forge, /greenhouse",
     12: "/dynamite, /pets, /petadventure, /ultraining, /badge",
-    13: "/transmute, /hunt hardmode",
-    14: "/adventure hardmode, /big dice",
+    13: "/transmute, /hardmode hunt",
+    14: "/hardmode adventure, /big dice",
     15: "/time jump, /transcend"
 }
 
@@ -146,7 +146,7 @@ class HelpView(discord.ui.View):
     @discord.ui.button(label="⚔️ RPG Core", style=discord.ButtonStyle.primary, custom_id="help_rpg")
     async def rpg_help(self, interaction: discord.Interaction, button: discord.ui.Button):
         embed = discord.Embed(title="✨ Starlight Sandbox - RPG Core Commands", color=discord.Color.blurple())
-        embed.add_field(name="Actions & Hub", value="`/profile` - View stats & action hub\n`/hunt` - Hunt monsters in current biome\n`/adventure` - Embark on an epic adventure\n`/gather wood` - Collect wood\n`/gather fish` - Catch fish\n`/gather mine` - Mine iron ore (Area 5+)\n`/heal` - Use potions or life boosts to recover HP", inline=False)
+        embed.add_field(name="Actions & Hub", value="`/profile` - View stats & action hub\n`/hunt` - Hunt monsters in current biome\n`/adventure` - Embark on an epic adventure\n`/chop` - Collect wood\n`/fish` - Catch fish\n`/mine` - Mine iron ore (Area 5+)\n`/heal` - Use potions or life boosts to recover HP", inline=False)
         embed.add_field(name="Progression & Economy", value="`/area` - View or travel between biomes\n`/shop` - Browse interactive shop catalog\n`/buy` - Purchase shop items\n`/inventory` - Check items & materials\n`/bal` - Check wallet & bank\n`/daily` - Claim daily coins\n`/open` - Open loot boxes\n`/craft` - Craft higher gear tiers using materials\n`/quest view` / `claim` / `abandon` - Manage quests", inline=False)
         await interaction.response.edit_message(embed=embed, view=self)
 
@@ -155,7 +155,7 @@ class HelpView(discord.ui.View):
         embed = discord.Embed(title="🗺️ Starlight Sandbox - Area Expansions (Areas 2–15)", color=discord.Color.green())
         embed.add_field(name="Early Biomes (Areas 2–6)", value="`/enchant`, `/training`, `/axe`, `/net`, `/pickup`, `/ladder`, `/farm`, `/multidice`, `/cook`, `/casino`, `/bowsaw`, `/boat`, `/pickaxe`", inline=False)
         embed.add_field(name="Mid-High Biomes (Areas 7–12)", value="`/refine`, `/big_arena`, `/alchemy`, `/tractor`, `/wheel`, `/chainsaw`, `/bigboat`, `/drill`, `/minintboss`, `/time_travel`, `/temporal_forge`, `/greenhouse`, `/dynamite`, `/petadventure`, `/ultraining`, `/badge`", inline=False)
-        embed.add_field(name="Endgame Biomes (Areas 13–15)", value="`/transmute`, `/hunt_hardmode`, `/adventure_hardmode`, `/big_dice`, `/time_jump`, `/transcend`", inline=False)
+        embed.add_field(name="Endgame Biomes (Areas 13–15)", value="`/transmute`, `/hardmode hunt`, `/hardmode adventure`, `/big_dice`, `/time_jump`, `/transcend`", inline=False)
         await interaction.response.edit_message(embed=embed, view=self)
 
     @discord.ui.button(label="🎉 Party Games", style=discord.ButtonStyle.secondary, custom_id="help_party")
@@ -174,9 +174,9 @@ class RpgCog(commands.Cog):
         description="View, claim, or abandon your active RPG quest.",
     )
 
-    gather_group = app_commands.Group(
-        name="gather",
-        description="Gather wood, fish, or mine ore in your current biome.",
+    hardmode_group = app_commands.Group(
+        name="hardmode",
+        description="High-risk, high-reward hardmode hunts and adventures (Area 13+).",
     )
 
     def _update_quest_progress(self, p, action_type, amount=1):
@@ -398,8 +398,98 @@ class RpgCog(commands.Cog):
         
         await interaction.response.send_message(f"🗺️ **Adventure in {biome['name']}**: +🪙 {earned_coins:,} | +⭐ {earned_xp:,} XP | +{drop_qty}x {biome_drop.title()}{level_msg}", ephemeral=False)
 
-    @gather_group.command(name="wood", description="Collect wood from the local woods.")
-    async def gather_wood(self, interaction: discord.Interaction):
+    @hardmode_group.command(name="hunt", description="Hunt hardmode monsters in your current biome (Requires Area 13+).")
+    async def hardmode_hunt(self, interaction: discord.Interaction):
+        uid = str(interaction.user.id)
+        p = get_player(uid)
+        area = p.get("area", 1)
+        if area < 13:
+            await interaction.response.send_message(
+                "❌ Hardmode Hunt requires you to be in **Area 13 (Abyssal Depths)** or higher!",
+                ephemeral=True,
+            )
+            return
+
+        biome = AREA_BIOMES.get(area, {})
+        biome_drop = biome.get("drop", "common material")
+
+        coin_mult, _ = self._get_gear_multipliers(p)
+        sword_bonus = p.get("sword_tier", 1) * 16
+        earned_coins = int(((random.randint(45, 95) + sword_bonus) * area) * 1.5 * coin_mult)
+        earned_xp = int(random.randint(35, 65) * area * 1.5)
+        drop_qty = max(1, int(random.randint(2, 5) * area * 1.5))
+
+        p["wallet"] = p.get("wallet", 0) + earned_coins
+        p["xp"] = p.get("xp", 0) + earned_xp
+        inv = p.setdefault("inventory", {})
+        inv[biome_drop] = inv.get(biome_drop, 0) + drop_qty
+
+        dmg_taken = self._calculate_enemy_damage(p, encounter_type="miniboss")
+        max_hp = p.get("max_hp", 100)
+        cur_hp = p.get("hp", max_hp)
+        if dmg_taken > 0:
+            p["hp"] = max(0, cur_hp - dmg_taken)
+            hp_msg = f" | 💔 Took **{dmg_taken}** DMG ({p['hp']}/{max_hp} HP)"
+        else:
+            hp_msg = f" | 🛡️ Dodged! ({cur_hp}/{max_hp} HP)"
+
+        self._update_quest_progress(p, "hunt", 1)
+        level_msg = self._check_level_up(p)
+        update_player(uid, p)
+
+        crafted_tag = " (✨ Crafted Bonus!)" if p.get("sword_origin") == "crafted" else ""
+        low_hp_tip = "\n⚠️ *Low HP! Use `/heal` to patch yourself up.*" if p["hp"] <= max(10, int(p["max_hp"] * 0.25)) else ""
+        await interaction.response.send_message(
+            f"🔥 **Hardmode Hunt in {biome.get('name', 'Unknown Biome')}**: +🪙 {earned_coins:,}{crafted_tag} | +⭐ {earned_xp:,} XP | +{drop_qty}x {biome_drop.title()}{hp_msg}{level_msg}{low_hp_tip}",
+            ephemeral=False,
+        )
+
+    @hardmode_group.command(name="adventure", description="Embark on a hardmode adventure in your current biome (Requires Area 14+).")
+    async def hardmode_adventure(self, interaction: discord.Interaction):
+        uid = str(interaction.user.id)
+        p = get_player(uid)
+        area = p.get("area", 1)
+        if area < 14:
+            await interaction.response.send_message(
+                "❌ Hardmode Adventure requires you to be in **Area 14 (Mythic Overgrowth)** or higher!",
+                ephemeral=True,
+            )
+            return
+
+        biome = AREA_BIOMES.get(area, {})
+        biome_drop = biome.get("drop", "common material")
+
+        coin_mult, _ = self._get_gear_multipliers(p)
+        sword_bonus = p.get("sword_tier", 1) * 40
+        earned_coins = int(((random.randint(160, 340) + sword_bonus) * area) * 1.5 * coin_mult)
+        earned_xp = int(random.randint(120, 240) * area * 1.5)
+        drop_qty = max(1, int(random.randint(5, 11) * area * 1.5))
+
+        p["wallet"] = p.get("wallet", 0) + earned_coins
+        p["xp"] = p.get("xp", 0) + earned_xp
+        inv = p.setdefault("inventory", {})
+        inv[biome_drop] = inv.get(biome_drop, 0) + drop_qty
+
+        dmg_taken = self._calculate_enemy_damage(p, encounter_type="boss")
+        max_hp = p.get("max_hp", 100)
+        cur_hp = p.get("hp", max_hp)
+        if dmg_taken > 0:
+            p["hp"] = max(0, cur_hp - dmg_taken)
+            hp_msg = f" | 💔 Took **{dmg_taken}** DMG ({p['hp']}/{max_hp} HP)"
+        else:
+            hp_msg = f" | 🛡️ Dodged! ({cur_hp}/{max_hp} HP)"
+
+        level_msg = self._check_level_up(p)
+        update_player(uid, p)
+
+        low_hp_tip = "\n⚠️ *Low HP! Use `/heal` to patch yourself up.*" if p["hp"] <= max(10, int(p["max_hp"] * 0.25)) else ""
+        await interaction.response.send_message(
+            f"🔥 **Hardmode Adventure in {biome.get('name', 'Unknown Biome')}**: +🪙 {earned_coins:,} | +⭐ {earned_xp:,} XP | +{drop_qty}x {biome_drop.title()}{hp_msg}{level_msg}{low_hp_tip}",
+            ephemeral=False,
+        )
+
+    @discord.app_commands.command(name="chop", description="Collect wood from the local woods.")
+    async def chop(self, interaction: discord.Interaction):
         await self.execute_chop(interaction)
 
     async def execute_chop(self, interaction: discord.Interaction):
@@ -414,8 +504,8 @@ class RpgCog(commands.Cog):
         crafted_tag = " (✨ Crafted Armor Bonus!)" if p.get("armor_origin") == "crafted" else ""
         await interaction.response.send_message(f"🪓 You collected **{wood}x Wood**!{crafted_tag}{level_msg}", ephemeral=False)
 
-    @gather_group.command(name="fish", description="Catch fish from the local waters.")
-    async def gather_fish(self, interaction: discord.Interaction):
+    @discord.app_commands.command(name="fish", description="Catch fish from the local waters.")
+    async def fish(self, interaction: discord.Interaction):
         await self.execute_fish(interaction)
 
     async def execute_fish(self, interaction: discord.Interaction):
@@ -428,8 +518,8 @@ class RpgCog(commands.Cog):
         update_player(uid, p)
         await interaction.response.send_message(f"🎣 You caught **{fish_caught}x Fish**!{level_msg}", ephemeral=False)
 
-    @gather_group.command(name="mine", description="Mine iron ore and rare crystals (Requires Area 5+).")
-    async def gather_mine(self, interaction: discord.Interaction):
+    @discord.app_commands.command(name="mine", description="Mine iron ore and rare crystals (Requires Area 5+).")
+    async def mine(self, interaction: discord.Interaction):
         uid = str(interaction.user.id)
         p = get_player(uid)
         area = p.get("area", 1)
