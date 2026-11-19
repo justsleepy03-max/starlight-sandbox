@@ -147,7 +147,7 @@ def build_recipe_embed(page: str) -> discord.Embed:
             value=" • ".join(parts),
             inline=False,
         )
-    embed.set_footer(text="Use /craft gear_type:sword target_tier:<num> to forge!")
+    embed.set_footer(text="Use /craft gear_type:<sword|armor> target_tier:<num> to forge!")
     return embed
 
 
@@ -186,23 +186,26 @@ class CraftingCog(commands.Cog):
             active["progress"] = min(active["target"], active["progress"] + amount)
 
     def _check_level_up(self, p):
-        xp_needed = p["level"] * 250
+        level = p.get("level", 1)
+        xp = p.get("xp", 0)
+        xp_needed = level * 250
         messages = []
 
-        while p["xp"] >= xp_needed:
-            p["xp"] -= xp_needed
-            p["level"] += 1
+        while xp >= xp_needed:
+            xp -= xp_needed
+            level += 1
+            p["level"] = level
             p["max_hp"] = p.get("max_hp", 100) + 20
             p["hp"] = p["max_hp"]
-            messages.append(f"\n🎉 **LEVEL UP!** You reached **Level {p['level']}**! Max HP increased to {p['max_hp']}.")
-            xp_needed = p["level"] * 250
+            messages.append(f"\n🎉 **LEVEL UP!** You reached **Level {level}**! Max HP increased to {p['max_hp']}.")
+            xp_needed = level * 250
 
-        current_level = p.get("level", 1)
+        p["xp"] = xp
         current_unlocked = p.get("unlocked_area", p.get("area", 1))
 
         highest_eligible = 1
         for area_id, req_level in AREA_LEVEL_REQUIREMENTS.items():
-            if current_level >= req_level:
+            if level >= req_level:
                 highest_eligible = area_id
 
         if highest_eligible > current_unlocked:
@@ -296,7 +299,7 @@ class CraftingCog(commands.Cog):
             )
             return
 
-        if inv.get("wood", 0) < wood_cost:
+        if wood_cost > 0 and inv.get("wood", 0) < wood_cost:
             await interaction.response.send_message(
                 f"❌ Not enough wood! You need **{wood_cost}x Wood** (You have {inv.get('wood', 0)}).",
                 ephemeral=True,
@@ -319,17 +322,18 @@ class CraftingCog(commands.Cog):
                 )
                 return
 
-        p["wallet"] -= coin_cost
-        inv["wood"] -= wood_cost
+        p["wallet"] = p.get("wallet", 0) - coin_cost
+        if wood_cost > 0:
+            inv["wood"] = inv.get("wood", 0) - wood_cost
+            if inv["wood"] <= 0:
+                inv.pop("wood", None)
         if iron_cost > 0:
-            inv["iron ore"] -= iron_cost
+            inv["iron ore"] = inv.get("iron ore", 0) - iron_cost
             if inv["iron ore"] <= 0:
                 inv.pop("iron ore", None)
-        if inv["wood"] <= 0:
-            inv.pop("wood", None)
 
         for mat_name, mat_qty in extra_mats.items():
-            inv[mat_name] -= mat_qty
+            inv[mat_name] = inv.get(mat_name, 0) - mat_qty
             if inv[mat_name] <= 0:
                 inv.pop(mat_name, None)
 
@@ -343,7 +347,9 @@ class CraftingCog(commands.Cog):
         emoji = "⚔️" if gear_type == "sword" else "🛡️"
         bonus_perk = "(+15% Hunt Coins)" if gear_type == "sword" else "(+25% Gathering Yield)"
 
-        cost_parts = [f"🪙 {coin_cost:,} coins", f"{wood_cost}x Wood"]
+        cost_parts = [f"🪙 {coin_cost:,} coins"]
+        if wood_cost > 0:
+            cost_parts.append(f"{wood_cost}x Wood")
         if iron_cost > 0:
             cost_parts.append(f"{iron_cost}x Iron Ore")
         for mat_name, mat_qty in extra_mats.items():
