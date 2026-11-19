@@ -1,7 +1,7 @@
 import discord
 from discord import app_commands
 from discord.ext import commands
-from database import get_player, update_player
+from database import get_player
 
 
 class InventoryView(discord.ui.View):
@@ -57,26 +57,22 @@ class InventoryView(discord.ui.View):
       return False
     return True
 
-  async def switch_to_inventory(self, interaction: discord.Interaction):
-    self.current_category = "inventory"
+  async def _refresh_and_edit(self, interaction: discord.Interaction, category: str):
+    self.player_data = get_player(self.user_id)
+    self.current_category = category
     self.update_components()
     await interaction.response.edit_message(
         embed=self.build_embed(), view=self
     )
+
+  async def switch_to_inventory(self, interaction: discord.Interaction):
+    await self._refresh_and_edit(interaction, "inventory")
 
   async def switch_to_equipment(self, interaction: discord.Interaction):
-    self.current_category = "equipment"
-    self.update_components()
-    await interaction.response.edit_message(
-        embed=self.build_embed(), view=self
-    )
+    await self._refresh_and_edit(interaction, "equipment")
 
   async def switch_to_stats(self, interaction: discord.Interaction):
-    self.current_category = "stats"
-    self.update_components()
-    await interaction.response.edit_message(
-        embed=self.build_embed(), view=self
-    )
+    await self._refresh_and_edit(interaction, "stats")
 
   def build_embed(self):
     embed = discord.Embed(
@@ -98,17 +94,31 @@ class InventoryView(discord.ui.View):
         )
       else:
         items_list = "\n".join(
-            [f"• **{item.title()}**: {qty}" for item, qty in inventory.items()]
+            [f"• **{item.title()}**: {qty:,}" for item, qty in inventory.items()]
         )
         embed.add_field(name="Stored Goods", value=items_list, inline=False)
 
     elif self.current_category == "equipment":
       embed.description = "Your currently equipped gear loadout:"
       equipment = self.player_data.get("equipment", {})
-      for slot, item in equipment.items():
-        display_item = item.title() if item else "None Equipped"
+      if equipment:
+        for slot, item in equipment.items():
+          display_item = str(item).title() if item else "None Equipped"
+          embed.add_field(
+              name=str(slot).capitalize(), value=display_item, inline=True
+          )
+      else:
+        sword_tier = self.player_data.get("sword_tier", 1)
+        armor_tier = self.player_data.get("armor_tier", 1)
         embed.add_field(
-            name=slot.capitalize(), value=display_item, inline=True
+            name="⚔️ Sword Tier",
+            value=f"Tier {sword_tier}",
+            inline=True,
+        )
+        embed.add_field(
+            name="🛡️ Armor Tier",
+            value=f"Tier {armor_tier}",
+            inline=True,
         )
 
     elif self.current_category == "stats":
@@ -140,7 +150,7 @@ class InventoryView(discord.ui.View):
           inline=True,
       )
 
-    embed.set_footer(text=f"User ID: {self.user_id}")
+    embed.set_footer(text=f"User ID: {self.user_id} • Use /economy for bank transfers")
     return embed
 
 
