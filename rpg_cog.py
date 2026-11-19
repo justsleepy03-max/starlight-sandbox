@@ -11,6 +11,13 @@ from items import SWORDS, ARMORS, HORSES, MISC_ITEMS, PET_EGGS, BUNDLES, RESOURC
 DATA_DIR = "/app/data"
 PETS_FILE = os.path.join(DATA_DIR, "pets.json")
 
+HEALING_ITEMS = {
+    "life potion": {"heal": 35, "max_hp_boost": 0},
+    "life boost a": {"heal": 10, "max_hp_boost": 10},
+    "life boost b": {"heal": 25, "max_hp_boost": 25},
+    "life boost c": {"heal": 50, "max_hp_boost": 50},
+}
+
 def load_pets_data():
     if not os.path.exists(PETS_FILE):
         return {}
@@ -164,7 +171,7 @@ class HelpView(discord.ui.View):
     @discord.ui.button(label="⚔️ RPG Core", style=discord.ButtonStyle.primary, custom_id="help_rpg")
     async def rpg_help(self, interaction: discord.Interaction, button: discord.ui.Button):
         embed = discord.Embed(title="✨ Starlight Sandbox - RPG Core Commands", color=discord.Color.blurple())
-        embed.add_field(name="Actions & Hub", value="`/profile` - View stats & action hub\n`/hunt` - Hunt monsters in current biome\n`/adventure` - Embark on an epic adventure\n`/chop` - Collect wood\n`/fish` - Catch fish\n`/mine` - Mine iron ore (Area 5+)", inline=False)
+        embed.add_field(name="Actions & Hub", value="`/profile` - View stats & action hub\n`/hunt` - Hunt monsters in current biome\n`/adventure` - Embark on an epic adventure\n`/chop` - Collect wood\n`/fish` - Catch fish\n`/mine` - Mine iron ore (Area 5+)\n`/heal` - Use potions or life boosts to recover HP", inline=False)
         embed.add_field(name="Progression & Economy", value="`/area` - View or travel between biomes\n`/shop` - Browse interactive shop catalog\n`/buy` - Purchase shop items\n`/inventory` - Check items & materials\n`/bal` - Check wallet & bank\n`/daily` - Claim daily coins\n`/open` - Open loot boxes\n`/craft` - Craft higher gear tiers using materials\n`/quest` / `/claimquest` - Manage quests", inline=False)
         await interaction.response.edit_message(embed=embed, view=self)
 
@@ -227,6 +234,28 @@ class RpgCog(commands.Cog):
         gathering_mult = 1.25 if armor_origin == "crafted" else 1.0 # Crafted armor gives +25% gathering yield
         
         return coin_mult, gathering_mult
+
+    def _calculate_enemy_damage(self, p, encounter_type="mob"):
+        """50% chance to deal damage; scales with area and reduces via equipped armor defense."""
+        if random.random() >= 0.50:
+            return 0  # 50% chance the enemy misses / player evades
+
+        area = p.get("area", 1)
+        armor_tier = p.get("armor_tier", 1)
+        armor_def = ARMORS.get(armor_tier, {}).get("def", 0)
+
+        if encounter_type == "boss":
+            raw_dmg = random.randint(20, 35) * area
+            mitigated = raw_dmg - int(armor_def * 0.6)
+            return max(5, mitigated)
+        elif encounter_type == "miniboss":
+            raw_dmg = random.randint(12, 22) * area
+            mitigated = raw_dmg - int(armor_def * 0.55)
+            return max(3, mitigated)
+        else:
+            raw_dmg = random.randint(5, 12) * area
+            mitigated = raw_dmg - int(armor_def * 0.5)
+            return max(1, mitigated)
 
     def get_shop_embed(self, page):
         if page == 1:
@@ -292,6 +321,63 @@ class RpgCog(commands.Cog):
         view = RPGActionView(self, uid)
         await interaction.response.send_message(embed=embed, view=view)
 
+    @discord.app_commands.command(name="heal", description="Use a healing potion or life boost from your inventory to restore HP.")
+    @app_commands.describe(item_name="Healing item to use (e.g. life potion, life boost a)", quantity="How many to use (default 1)")
+    async def heal(self, interaction: discord.Interaction, item_name: str = None, quantity: int = 1):
+        uid = str(interaction.user.id)
+        p = get_player(uid)
+        inv = p.setdefault("inventory", {})
+
+        if quantity < 1:
+            await interaction.response.send_message("❌ Quantity must be at least 1!", ephemeral=True)
+            return
+
+        # Pick requested item or default to first available healing item in inventory
+        if item_name:
+            chosen = item_name.lower().strip()
+            if chosen not in HEALING_ITEMS:
+                await interaction.response.send_message(
+                    f"❌ **'{item_name}'** isn't a healing item! Try `life potion`, `life boost a`, `life boost b`, or `life boost c`.",
+                    ephemeral=True
+                )
+                return
+        else:
+            chosen = next((k for k in ["life potion", "life boost a", "life boost b", "life boost c"] if inv.get(k, 0) > 0), None)
+            if not chosen:
+                await interaction.response.send_message(
+                    "❌ You don't have any healing potions or life boosts in your inventory! Buy some in `/shop`.",
+                    ephemeral=True
+                )
+                return
+
+        owned = inv.get(chosen, 0)
+        if owned < quantity:
+            await interaction.response.send_message(
+                f"❌ You only have **{owned}x {chosen.title()}** in your inventory!",
+                ephemeral=True
+            )
+            return
+
+        stats = HEALING_ITEMS[chosen]
+        inv[chosen] -= quantity
+        if inv[chosen] <= 0:
+            del inv[chosen]
+
+        max_hp_gain = stats["max_hp_boost"] * quantity
+        if max_hp_gain > 0:
+            p["max_hp"] = p.get("max_hp", 100) + max_hp_gain
+
+        heal_amount = stats["heal"] * quantity
+        current_hp = p.get("hp", p.get("max_hp", 100))
+        p["hp"] = min(p.get("max_hp", 100), current_hp + heal_amount)
+
+        update_player(uid, p)
+
+        boost_text = f" | 📈 **+{max_hp_gain} Max HP**" if max_hp_gain > 0 else ""
+        await interaction.response.send_message(
+            f"🧪 Used **{quantity}x {chosen.title()}**! Restored **+{heal_amount} HP**{boost_text} — Now at **{p['hp']}/{p['max_hp']} HP**."
+        )
+
     @discord.app_commands.command(name="hunt", description="Hunt monsters in your current biome.")
     async def hunt(self, interaction: discord.Interaction):
         await self.execute_hunt(interaction)
@@ -312,13 +398,26 @@ class RpgCog(commands.Cog):
         p["wallet"] += earned_coins
         p["xp"] += earned_xp
         p["inventory"][biome_drop] = p["inventory"].get(biome_drop, 0) + drop_qty
+
+        dmg_taken = self._calculate_enemy_damage(p, encounter_type="mob")
+        max_hp = p.get("max_hp", 100)
+        cur_hp = p.get("hp", max_hp)
+        if dmg_taken > 0:
+            p["hp"] = max(0, cur_hp - dmg_taken)
+            hp_msg = f" | 💔 Took **{dmg_taken}** DMG ({p['hp']}/{max_hp} HP)"
+        else:
+            hp_msg = f" | 🛡️ Dodged! ({cur_hp}/{max_hp} HP)"
         
         self._update_quest_progress(p, "hunt", 1)
         level_msg = self._check_level_up(p)
         update_player(uid, p)
         
         crafted_tag = " (✨ Crafted Bonus!)" if p.get("sword_origin") == "crafted" else ""
-        await interaction.response.send_message(f"⚔️ **Hunt in {biome['name']}**: +🪙 {earned_coins:,}{crafted_tag} | +⭐ {earned_xp:,} XP | +{drop_qty}x {biome_drop.title()}{level_msg}", ephemeral=False)
+        low_hp_tip = "\n⚠️ *Low HP! Use `/heal` to patch yourself up.*" if p["hp"] <= max(10, int(p["max_hp"] * 0.25)) else ""
+        await interaction.response.send_message(
+            f"⚔️ **Hunt in {biome['name']}**: +🪙 {earned_coins:,}{crafted_tag} | +⭐ {earned_xp:,} XP | +{drop_qty}x {biome_drop.title()}{hp_msg}{level_msg}{low_hp_tip}",
+            ephemeral=False
+        )
 
     @discord.app_commands.command(name="adventure", description="Embark on an epic adventure in your current biome.")
     async def adventure(self, interaction: discord.Interaction):
