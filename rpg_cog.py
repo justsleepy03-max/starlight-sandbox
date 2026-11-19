@@ -12,11 +12,20 @@ DATA_DIR = "/app/data"
 PETS_FILE = os.path.join(DATA_DIR, "pets.json")
 
 HEALING_ITEMS = {
-    "life potion": {"heal": 35, "max_hp_boost": 0},
-    "life boost a": {"heal": 10, "max_hp_boost": 10},
-    "life boost b": {"heal": 25, "max_hp_boost": 25},
-    "life boost c": {"heal": 50, "max_hp_boost": 50},
+    "minor hp bottle": {"heal": 35, "max_hp_boost": 0},
+    "greater hp bottle": {"heal": 120, "max_hp_boost": 0},
+    "starlight elixir": {"heal": 250, "max_hp_boost": 25},
+    "celestial vitality draught": {"heal": 500, "max_hp_boost": 75},
+    "transcendent life flask": {"heal": 1000, "max_hp_boost": 150},
 }
+
+HEALING_PRIORITY = [
+    "minor hp bottle",
+    "greater hp bottle",
+    "starlight elixir",
+    "celestial vitality draught",
+    "transcendent life flask",
+]
 
 def load_pets_data():
     if not os.path.exists(PETS_FILE):
@@ -321,8 +330,8 @@ class RpgCog(commands.Cog):
         view = RPGActionView(self, uid)
         await interaction.response.send_message(embed=embed, view=view)
 
-    @discord.app_commands.command(name="heal", description="Use a healing potion or life boost from your inventory to restore HP.")
-    @app_commands.describe(item_name="Healing item to use (e.g. life potion, life boost a)", quantity="How many to use (default 1)")
+    @discord.app_commands.command(name="heal", description="Use a healing bottle, elixir, or life flask from your inventory to restore HP.")
+    @app_commands.describe(item_name="Healing item to use (e.g. minor hp bottle, starlight elixir)", quantity="How many to use (default 1)")
     async def heal(self, interaction: discord.Interaction, item_name: str = None, quantity: int = 1):
         uid = str(interaction.user.id)
         p = get_player(uid)
@@ -332,20 +341,19 @@ class RpgCog(commands.Cog):
             await interaction.response.send_message("❌ Quantity must be at least 1!", ephemeral=True)
             return
 
-        # Pick requested item or default to first available healing item in inventory
         if item_name:
             chosen = item_name.lower().strip()
             if chosen not in HEALING_ITEMS:
                 await interaction.response.send_message(
-                    f"❌ **'{item_name}'** isn't a healing item! Try `life potion`, `life boost a`, `life boost b`, or `life boost c`.",
+                    "❌ That isn't a valid healing item! Check `/shop` Page 2 for available HP bottles, elixirs, and flasks.",
                     ephemeral=True
                 )
                 return
         else:
-            chosen = next((k for k in ["life potion", "life boost a", "life boost b", "life boost c"] if inv.get(k, 0) > 0), None)
+            chosen = next((k for k in HEALING_PRIORITY if inv.get(k, 0) > 0), None)
             if not chosen:
                 await interaction.response.send_message(
-                    "❌ You don't have any healing potions or life boosts in your inventory! Buy some in `/shop`.",
+                    "❌ You don't have any healing bottles or elixirs in your inventory! Grab some from `/shop`.",
                     ephemeral=True
                 )
                 return
@@ -598,7 +606,6 @@ class RpgCog(commands.Cog):
             await interaction.response.send_message("❌ Quantity must be at least 1!", ephemeral=True)
             return
 
-        # Build master lookup dynamically from items.py catalogs
         master_catalog = {}
         for s in SWORDS.values(): master_catalog[s["name"].lower()] = s
         for a in ARMORS.values(): master_catalog[a["name"].lower()] = a
@@ -623,7 +630,6 @@ class RpgCog(commands.Cog):
         p["wallet"] -= total_cost
         inv = p.setdefault("inventory", {})
 
-        # Check if bought item is a sword or armor to set origin to 'shop'
         if any(item_lower == s["name"].lower() for s in SWORDS.values()):
             p["sword_origin"] = "shop"
         elif any(item_lower == a["name"].lower() for a in ARMORS.values()):
