@@ -351,3 +351,10 @@ class CraftingCog(commands.Cog):
 
         await interaction.response.send_message(
             f"🎉 **FORGING SUCCESSFUL!** You forged **{recipe['label']} (Tier {target_tier} {gear_type.title()})** {emoji}!\n"
+            f"*Perk Active:* **{bonus_perk}**\n"
+            f"*Costs paid:* {', '.join(cost_parts)}{level_msg}"
+        )
+
+
+async def setup(bot):
+    await bot.add_cog(CraftingCog(bot))
