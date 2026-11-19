@@ -2,19 +2,9 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from database import load_data, get_player, update_player
+from database import load_data
 
 STARLIGHT_GOLD = 0xF1C40F
-
-# Map item IDs/names to their equipment slot: "pet", "sword", "armor", or "horse"
-# Add more items/pets here as you expand your RPG catalog
-EQUIPPABLE_SLOTS = {
-    "slime": "pet",
-    "fox": "pet",
-    # "wooden_sword": "sword",
-    # "leather_armor": "armor",
-    # "trail_horse": "horse",
-}
 
 # Metadata for the /utility dropdown sub-menu
 ITEM_CATALOG = {
@@ -30,15 +20,6 @@ RECIPES_CATALOG = {
 AREAS_CATALOG = {
     "Biomes (Areas 1–15)": "Unlock areas by leveling up, travel via /area, and gather area-scaled materials.",
 }
-
-
-def ensure_player_schema(player: dict) -> dict:
-    player.setdefault("inventory", {})
-    player.setdefault("cooldowns", {})
-    player.setdefault("equipment", {})
-    for slot in ("sword", "armor", "horse", "pet"):
-        player["equipment"].setdefault(slot, None)
-    return player
 
 
 class UtilitySelect(discord.ui.Select):
@@ -143,51 +124,6 @@ class UtilityView(discord.ui.View):
 class RPGUtilityCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-
-    @app_commands.command(
-        name="equip",
-        description="Equip a pet or gear item from your inventory without deleting your current one.",
-    )
-    @app_commands.describe(item="Name of the item or pet from your inventory to equip")
-    async def equip(self, interaction: discord.Interaction, item: str):
-        key = item.strip().lower().replace(" ", "_")
-        slot = EQUIPPABLE_SLOTS.get(key)
-
-        if not slot:
-            await interaction.response.send_message(
-                f"❌ `{item}` isn't registered as an equippable item or pet yet.",
-                ephemeral=True,
-            )
-            return
-
-        player = ensure_player_schema(get_player(interaction.user.id))
-        inventory = player["inventory"]
-
-        owned_qty = inventory.get(key, inventory.get(item.strip(), 0))
-        if not owned_qty or owned_qty <= 0:
-            await interaction.response.send_message(
-                f"❌ You don't have **{item}** in your `/inventory`.",
-                ephemeral=True,
-            )
-            return
-
-        previous_item = player["equipment"].get(slot)
-        player["equipment"][slot] = key
-        update_player(interaction.user.id, player)
-
-        prev_label = previous_item.replace("_", " ").title() if previous_item else "None"
-        new_label = key.replace("_", " ").title()
-
-        embed = discord.Embed(
-            title="🎒 Equipment Updated",
-            description=(
-                f"**Slot:** `{slot.title()}`\n"
-                f"**Equipped:** **{new_label}**\n"
-                f"**Replaced:** {prev_label} *(kept safely in your `/inventory`)*"
-            ),
-            color=STARLIGHT_GOLD,
-        )
-        await interaction.response.send_message(embed=embed)
 
     @app_commands.command(
         name="utility",
