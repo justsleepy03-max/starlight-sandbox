@@ -436,63 +436,6 @@ class RpgCog(commands.Cog):
         crafted_tag = " (✨ Crafted Armor Bonus!)" if p.get("armor_origin") == "crafted" else ""
         await interaction.response.send_message(f"⛏️ You mined **{ore_mined}x Iron Ore**!{crafted_tag}{level_msg}", ephemeral=False)
 
-    # --- EXPANDED CRAFTING & GEAR TIERS SYSTEM ---
-    @discord.app_commands.command(name="craft", description="Craft higher tier swords and armor using your gathered materials.")
-    @app_commands.describe(gear_type="Choose whether to craft a sword or armor", target_tier="Target tier to forge (2 to 15)")
-    @app_commands.choices(gear_type=[
-        app_commands.Choice(name="Sword", value="sword"),
-        app_commands.Choice(name="Armor", value="armor")
-    ])
-    async def craft(self, interaction: discord.Interaction, gear_type: str, target_tier: int):
-        uid = str(interaction.user.id)
-        p = get_player(uid)
-
-        if target_tier < 2 or target_tier > 15:
-            await interaction.response.send_message("❌ You can forge gear tiers from **Tier 2 up to Tier 15**!", ephemeral=True)
-            return
-
-        current_key = f"{gear_type}_tier"
-        current_tier = p.get(current_key, 1)
-
-        if target_tier <= current_tier:
-            await interaction.response.send_message(f"❌ Your current {gear_type} is already Tier {current_tier}! You can only craft higher tiers.", ephemeral=True)
-            return
-
-        if target_tier != current_tier + 1:
-            await interaction.response.send_message(f"❌ You must forge gear sequentially! Your next available tier is **Tier {current_tier + 1}**.", ephemeral=True)
-            return
-
-        wood_cost = target_tier * 15
-        iron_cost = target_tier * 10 if target_tier >= 5 else 0
-        coin_cost = target_tier * 1000
-
-        inv = p.get("inventory", {})
-        if p["wallet"] < coin_cost:
-            await interaction.response.send_message(f"❌ Not enough coins! You need **🪙 {coin_cost:,}** coins to forge Tier {target_tier}.", ephemeral=True)
-            return
-        if inv.get("wood", 0) < wood_cost:
-            await interaction.response.send_message(f"❌ Not enough wood! You need **{wood_cost}x Wood** (You have {inv.get('wood', 0)}).", ephemeral=True)
-            return
-        if iron_cost > 0 and inv.get("iron ore", 0) < iron_cost:
-            await interaction.response.send_message(f"❌ Not enough iron ore! You need **{iron_cost}x Iron Ore** (You have {inv.get('iron ore', 0)}).", ephemeral=True)
-            return
-
-        p["wallet"] -= coin_cost
-        inv["wood"] -= wood_cost
-        if iron_cost > 0:
-            inv["iron ore"] -= iron_cost
-
-        p[current_key] = target_tier
-        p[f"{gear_type}_origin"] = "crafted"  # Mark as crafted for passive perks!
-        
-        self._update_quest_progress(p, "craft", 1)
-        level_msg = self._check_level_up(p)
-        update_player(uid, p)
-
-        emoji = "⚔️" if gear_type == "sword" else "🛡️"
-        bonus_perk = " (+15% Hunt Coins)" if gear_type == "sword" else " (+25% Gathering Yield)"
-        await interaction.response.send_message(f"🎉 **FORGING SUCCESSFUL!** You successfully crafted **Tier {target_tier} {gear_type.title()}** {emoji}!\n*Perk Unlocked:* **{bonus_perk}**\n*Costs paid: 🪙 {coin_cost:,} coins, {wood_cost}x Wood{f', {iron_cost}x Iron Ore' if iron_cost > 0 else ''}*{level_msg}")
-
     @discord.app_commands.command(name="area", description="View your current area, biomes, unlocks, or travel to a new area.")
     @app_commands.describe(target_area="Area number to travel to")
     async def area(self, interaction: discord.Interaction, target_area: int = None):
@@ -610,27 +553,4 @@ class RpgCog(commands.Cog):
         app_commands.Choice(name="Epic Lootbox", value="epic lootbox")
     ])
     async def open_box(self, interaction: discord.Interaction, box_tier: str):
-        uid = str(interaction.user.id)
-        p = get_player(uid)
-        inv = p.get("inventory", {})
-
-        if inv.get(box_tier, 0) < 1:
-            await interaction.response.send_message(f"❌ You don't have a **{box_tier.title()}** in your inventory!", ephemeral=True)
-            return
-
-        inv[box_tier] -= 1
-        if inv[box_tier] <= 0:
-            del inv[box_tier]
-
-        area = p.get("area", 1)
-        biome = AREA_BIOMES.get(area, {})
-        drop_item = biome.get("drop", "soft bark")
-        inv[drop_item] = inv.get(drop_item, 0) + (2 * area)
-        coins = random.randint(200, 1000) * area
-        p["wallet"] += coins
-
-        update_player(uid, p)
-        await interaction.response.send_message(f"📦 Opened **{box_tier.title()}**! Found 🪙 +{coins:,} coins and +{2 * area}x {drop_item.title()}.")
-
-async def setup(bot):
-    await bot.add_cog(RpgCog(bot))
+        uid = str(
