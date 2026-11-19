@@ -17,7 +17,8 @@ def load_data():
         return {}
     try:
         with open(DATA_FILE, "r") as f:
-            return json.load(f)
+            data = json.load(f)
+            return data if isinstance(data, dict) else {}
     except json.JSONDecodeError:
         return {}
 
@@ -29,6 +30,9 @@ def save_data(data):
 
 
 def ensure_player_defaults(player):
+    if not isinstance(player, dict):
+        player = {}
+
     player.setdefault("wallet", 100)
     player.setdefault("bank", 0)
     player.setdefault("hp", 100)
@@ -51,7 +55,7 @@ def ensure_player_defaults(player):
 def get_player(user_id):
     data = load_data()
     uid = str(user_id)
-    if uid not in data:
+    if uid not in data or not isinstance(data[uid], dict):
         data[uid] = ensure_player_defaults({
             "wallet": 100,
             "bank": 0,
@@ -77,3 +81,12 @@ def update_player(user_id, player_data):
     data = load_data()
     data[str(user_id)] = ensure_player_defaults(player_data)
     save_data(data)
+
+
+def get_all_players():
+    data = load_data()
+    all_players = {}
+    for uid, player in data.items():
+        if isinstance(player, dict):
+            all_players[str(uid)] = ensure_player_defaults(dict(player))
+    return all_players
