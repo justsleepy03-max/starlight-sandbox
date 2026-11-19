@@ -5,9 +5,9 @@ from discord.ext import commands
 
 class EmbedModal(discord.ui.Modal, title="Starlight Interactive Embed Builder"):
     embed_title = discord.ui.TextInput(
-        label="Embed Title",
-        placeholder="Enter the title for your announcement/patch notes...",
-        required=True,
+        label="Embed Title (Optional)",
+        placeholder="Optional title for your announcement/update...",
+        required=False,
         max_length=256
     )
 
@@ -43,22 +43,28 @@ class EmbedModal(discord.ui.Modal, title="Starlight Interactive Embed Builder"):
     async def on_submit(self, interaction: discord.Interaction):
         # Default to Starlight Gold (#F1C40F) unless a custom hex is provided
         color = discord.Color.from_str("#F1C40F")
-        if self.embed_color.value:
-            clean_color = self.embed_color.value.strip("#")
+        if self.embed_color.value and self.embed_color.value.strip():
+            clean_color = self.embed_color.value.strip().lstrip("#")
             try:
                 color = discord.Color(int(clean_color, 16))
             except ValueError:
                 pass
 
-        # Build the embed
-        embed = discord.Embed(
-            title=self.embed_title.value,
-            description=self.embed_description.value,
-            color=color
-        )
+        clean_title = self.embed_title.value.strip() if self.embed_title.value else ""
+        clean_description = self.embed_description.value.strip() if self.embed_description.value else ""
 
-        if self.embed_footer.value:
-            embed.set_footer(text=self.embed_footer.value)
+        # Build the embed, omitting title when left blank
+        embed_kwargs = {
+            "description": clean_description,
+            "color": color
+        }
+        if clean_title:
+            embed_kwargs["title"] = clean_title
+
+        embed = discord.Embed(**embed_kwargs)
+
+        if self.embed_footer.value and self.embed_footer.value.strip():
+            embed.set_footer(text=self.embed_footer.value.strip())
 
         if interaction.guild:
             embed.set_author(
