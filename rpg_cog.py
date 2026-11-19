@@ -299,6 +299,17 @@ class RpgCog(commands.Cog):
         if active and active["type"] == action_type and active["progress"] < active["target"]:
             active["progress"] = min(active["target"], active["progress"] + amount)
 
+    def _advance_biome_quest(self, p, action_type, amount=1):
+        bq = p.get("active_biome_quest")
+        if not isinstance(bq, dict):
+            return
+        if bq.get("type") != action_type:
+            return
+        if action_type != "craft" and p.get("area", 1) != bq.get("area"):
+            return
+        target = int(bq.get("target", 1))
+        bq["progress"] = min(target, int(bq.get("progress", 0)) + amount)
+
     def _check_level_up(self, p):
         xp_needed = p["level"] * 250
         messages = []
@@ -597,6 +608,7 @@ class RpgCog(commands.Cog):
             hp_msg = f" | 🛡️ Dodged! ({cur_hp}/{max_hp} HP)"
         
         self._update_quest_progress(p, "hunt", 1)
+        self._advance_biome_quest(p, "hunt", 1)
         level_msg = self._check_level_up(p)
         update_player(uid, p)
         
@@ -629,7 +641,9 @@ class RpgCog(commands.Cog):
         p["wallet"] = p.get("wallet", 0) + earned_coins
         p["xp"] = p.get("xp", 0) + earned_xp
         inv[biome_drop] = inv.get(biome_drop, 0) + drop_qty
-        
+
+        self._update_quest_progress(p, "adventure", 1)
+        self._advance_biome_quest(p, "adventure", 1)
         level_msg = self._check_level_up(p)
         update_player(uid, p)
         
@@ -671,6 +685,7 @@ class RpgCog(commands.Cog):
             hp_msg = f" | 🛡️ Dodged! ({cur_hp}/{max_hp} HP)"
 
         self._update_quest_progress(p, "hunt", 1)
+        self._advance_biome_quest(p, "hunt", 1)
         level_msg = self._check_level_up(p)
         update_player(uid, p)
 
@@ -707,224 +722,15 @@ class RpgCog(commands.Cog):
         inv = p.setdefault("inventory", {})
         inv[biome_drop] = inv.get(biome_drop, 0) + drop_qty
 
-        dmg_taken = self._calculate_enemy_damage(p, encounter_type="boss")
-        max_hp = p.get("max_hp", 100)
-        cur_hp = p.get("hp", max_hp)
-        if dmg_taken > 0:
-            p["hp"] = max(0, cur_hp - dmg_taken)
-            hp_msg = f" | 💔 Took **{dmg_taken}** DMG ({p['hp']}/{max_hp} HP)"
-        else:
-            hp_msg = f" | 🛡️ Dodged! ({cur_hp}/{max_hp} HP)"
-
+        self._update_quest_progress(p, "adventure", 1)
+        self._advance_biome_quest(p, "adventure", 1)
         level_msg = self._check_level_up(p)
         update_player(uid, p)
 
-        low_hp_tip = "\n⚠️ *Low HP! Use `/heal` to patch yourself up.*" if p["hp"] <= max(10, int(p["max_hp"] * 0.25)) else ""
+        crafted_tag = " (✨ Crafted Bonus!)" if p.get("sword_origin") == "crafted" else ""
         await interaction.response.send_message(
-            f"🔥 **Hardmode Adventure in {biome.get('name', 'Unknown Biome')}**: +🪙 {earned_coins:,} | +⭐ {earned_xp:,} XP | +{drop_qty}x {biome_drop.title()}{hp_msg}{level_msg}{low_hp_tip}",
+            f"🔥 **Hardmode Adventure in {biome.get('name', 'Unknown Biome')}**: +🪙 {earned_coins:,}{crafted_tag} | +⭐ {earned_xp:,} XP | +{drop_qty}x {biome_drop.title()}{level_msg}",
             ephemeral=False,
-        )
-
-    @gather_group.command(name="wood", description="Collect wood from the local woods.")
-    async def gather_wood(self, interaction: discord.Interaction):
-        await self.execute_chop(interaction)
-
-    async def execute_chop(self, interaction: discord.Interaction):
-        uid = str(interaction.user.id)
-        p = get_player(uid)
-        inv = p.setdefault("inventory", {})
-        _, gathering_mult = self._get_gear_multipliers(p)
-        wood = max(1, int(random.randint(2, 6) * p.get("area", 1) * gathering_mult))
-        inv["wood"] = inv.get("wood", 0) + wood
-        self._update_quest_progress(p, "chop", wood)
-        level_msg = self._check_level_up(p)
-        update_player(uid, p)
-        crafted_tag = " (✨ Crafted Armor Bonus!)" if p.get("armor_origin") == "crafted" else ""
-        await interaction.response.send_message(f"🪓 You collected **{wood}x Wood**!{crafted_tag}{level_msg}", ephemeral=False)
-
-    @gather_group.command(name="fish", description="Catch fish from the local waters.")
-    async def gather_fish(self, interaction: discord.Interaction):
-        await self.execute_fish(interaction)
-
-    async def execute_fish(self, interaction: discord.Interaction):
-        uid = str(interaction.user.id)
-        p = get_player(uid)
-        inv = p.setdefault("inventory", {})
-        fish_caught = random.randint(1, 4) * p.get("area", 1)
-        inv["fish"] = inv.get("fish", 0) + fish_caught
-        self._update_quest_progress(p, "fish", fish_caught)
-        level_msg = self._check_level_up(p)
-        update_player(uid, p)
-        await interaction.response.send_message(f"🎣 You caught **{fish_caught}x Fish**!{level_msg}", ephemeral=False)
-
-    @gather_group.command(name="mine", description="Mine iron ore and rare crystals (Requires Area 5+).")
-    async def gather_mine(self, interaction: discord.Interaction):
-        uid = str(interaction.user.id)
-        p = get_player(uid)
-        area = p.get("area", 1)
-        if area < 5:
-            await interaction.response.send_message("❌ Mining requires you to be in **Area 5 (Crystal Caverns)** or higher!", ephemeral=True)
-            return
-        
-        inv = p.setdefault("inventory", {})
-        _, gathering_mult = self._get_gear_multipliers(p)
-        ore_mined = max(1, int(random.randint(2, 5) * area * gathering_mult))
-        inv["iron ore"] = inv.get("iron ore", 0) + ore_mined
-        self._update_quest_progress(p, "mine", ore_mined)
-        level_msg = self._check_level_up(p)
-        update_player(uid, p)
-        crafted_tag = " (✨ Crafted Armor Bonus!)" if p.get("armor_origin") == "crafted" else ""
-        await interaction.response.send_message(f"⛏️ You mined **{ore_mined}x Iron Ore**!{crafted_tag}{level_msg}", ephemeral=False)
-
-    @discord.app_commands.command(name="area", description="View your current area, biomes, unlocks, or travel to a new area.")
-    @app_commands.describe(target_area="Area number to travel to (1–15)")
-    async def area(self, interaction: discord.Interaction, target_area: int = None):
-        uid = str(interaction.user.id)
-        p = get_player(uid)
-        current_area = p.get("area", 1)
-        unlocked_area = p.get("unlocked_area", 1)
-
-        if target_area is None:
-            embed = discord.Embed(title=f"🗺️ Starlight Biome Progression (Current: Area {current_area})", color=discord.Color.blue())
-            lines = []
-            for a_num, unlocks in AREA_UNLOCKS.items():
-                biome_name = AREA_BIOMES.get(a_num, {}).get("name", "Unknown")
-                status = '✅ Current' if a_num == current_area else '✅ Unlocked' if a_num <= unlocked_area else '🔒 Locked'
-                lines.append(f"**Area {a_num}: {biome_name}** [{status}]\n*🔓 {unlocks}*\n")
-            embed.description = "\n".join(lines)
-            embed.set_footer(text="Use /area target_area:<num> to travel to your unlocked areas!")
-            await interaction.response.send_message(embed=embed)
-            return
-
-        if target_area < 1 or target_area > 15:
-            await interaction.response.send_message("❌ Please choose a valid area number between **1** and **15**.", ephemeral=True)
-            return
-
-        if target_area > unlocked_area:
-            req_lvl = AREA_LEVEL_REQUIREMENTS.get(target_area, 99)
-            await interaction.response.send_message(f"❌ Area {target_area} is locked! Reach **Level {req_lvl}** to automatically unlock it.", ephemeral=True)
-            return
-
-        p["area"] = target_area
-        update_player(uid, p)
-        new_biome = AREA_BIOMES.get(target_area, {}).get("name", "Unknown")
-        await interaction.response.send_message(f"🚀 Successfully traveled to **Area {target_area} ({new_biome})**!")
-
-    @discord.app_commands.command(name="inventory", description="Check your items and materials.")
-    async def inventory(self, interaction: discord.Interaction):
-        uid = str(interaction.user.id)
-        p = get_player(uid)
-        inv = p.get("inventory", {})
-        embed = discord.Embed(title=f"🎒 {interaction.user.display_name}'s Inventory", color=discord.Color.gold())
-        embed.description = "Your inventory is empty!" if not inv else "\n".join([f"• **{item.title()}**: {qty:,}" for item, qty in inv.items()])
-        await interaction.response.send_message(embed=embed)
-
-    @discord.app_commands.command(name="daily", description="Claim your 24-hour daily reward.")
-    async def daily(self, interaction: discord.Interaction):
-        uid = str(interaction.user.id)
-        p = get_player(uid)
-        now = time.time()
-        if now - p.get("last_daily", 0) < 86400:
-            await interaction.response.send_message("⏳ You have already claimed your daily reward today!", ephemeral=True)
-            return
-
-        bonus = 500 * p.get("area", 1)
-        p["wallet"] = p.get("wallet", 0) + bonus
-        p["last_daily"] = now
-        update_player(uid, p)
-        await interaction.response.send_message(f"🎁 Claimed daily reward: 🪙 {bonus:,} coins!")
-
-    @quest_group.command(name="view", description="Check your active quest or pick up a new one.")
-    async def quest_view(self, interaction: discord.Interaction):
-        uid = str(interaction.user.id)
-        p = get_player(uid)
-        if not p.get("active_quest"):
-            player_area = p.get("area", 1)
-            available_quests = [q for q in QUEST_POOL if player_area >= q.get("min_area", 1)]
-            selected = random.choice(available_quests)
-            p["active_quest"] = {
-                "id": selected["id"], "title": selected["title"], "desc": selected["desc"],
-                "type": selected["type"], "progress": 0, "target": selected["target"],
-                "reward_coins": selected["reward_coins"] * player_area, "reward_xp": selected["reward_xp"] * player_area
-            }
-            update_player(uid, p)
-            
-        active = p["active_quest"]
-        embed = discord.Embed(title="📜 Active Quest", color=discord.Color.gold())
-        embed.add_field(name=active["title"], value=f"*{active['desc']}*\n\n**Progress:** {active['progress']}/{active['target']}", inline=False)
-        await interaction.response.send_message(embed=embed)
-
-    @quest_group.command(name="claim", description="Claim rewards for your completed quest.")
-    async def quest_claim(self, interaction: discord.Interaction):
-        uid = str(interaction.user.id)
-        p = get_player(uid)
-        active = p.get("active_quest")
-        if not active or active["progress"] < active["target"]:
-            await interaction.response.send_message("❌ No completed quest to claim!", ephemeral=True)
-            return
-        p["wallet"] = p.get("wallet", 0) + active["reward_coins"]
-        p["xp"] = p.get("xp", 0) + active["reward_xp"]
-        p["active_quest"] = None
-        level_msg = self._check_level_up(p)
-        update_player(uid, p)
-        await interaction.response.send_message(f"🎉 Quest Completed! Received 🪙 {active['reward_coins']:,} coins!{level_msg}")
-
-    @quest_group.command(name="abandon", description="Abandon your current active quest.")
-    async def quest_abandon(self, interaction: discord.Interaction):
-        uid = str(interaction.user.id)
-        p = get_player(uid)
-        if not p.get("active_quest"):
-            await interaction.response.send_message("❌ You don't have an active quest to abandon!", ephemeral=True)
-            return
-        p["active_quest"] = None
-        update_player(uid, p)
-        await interaction.response.send_message("🗑️ You have abandoned your active quest. Use `/quest view` to pick up a new one!")
-
-    @discord.app_commands.command(name="open", description="Open a loot box from your inventory.")
-    @app_commands.describe(box_tier="Choose the tier of loot box to open")
-    @app_commands.choices(box_tier=[
-        app_commands.Choice(name="Common Lootbox", value="common lootbox"),
-        app_commands.Choice(name="Uncommon Lootbox", value="uncommon lootbox"),
-        app_commands.Choice(name="Rare Lootbox", value="rare lootbox"),
-        app_commands.Choice(name="Epic Lootbox", value="epic lootbox")
-    ])
-    async def open_box(self, interaction: discord.Interaction, box_tier: str):
-        uid = str(interaction.user.id)
-        p = get_player(uid)
-        inv = p.setdefault("inventory", {})
-
-        if inv.get(box_tier, 0) < 1:
-            await interaction.response.send_message(
-                f"❌ You don't have any **{box_tier.title()}** in your inventory!",
-                ephemeral=True,
-            )
-            return
-
-        inv[box_tier] -= 1
-        if inv[box_tier] <= 0:
-            inv.pop(box_tier, None)
-
-        loot_ranges = {
-            "common lootbox": (250, 750, 1, 3),
-            "uncommon lootbox": (750, 2000, 2, 5),
-            "rare lootbox": (2000, 5000, 3, 8),
-            "epic lootbox": (5000, 15000, 5, 12),
-        }
-        min_c, max_c, min_m, max_m = loot_ranges.get(box_tier, (250, 750, 1, 3))
-
-        coins_found = random.randint(min_c, max_c)
-        area = p.get("area", 1)
-        biome_drop = AREA_BIOMES.get(area, {}).get("drop", "wood")
-        mat_qty = random.randint(min_m, max_m)
-
-        p["wallet"] = p.get("wallet", 0) + coins_found
-        inv[biome_drop] = inv.get(biome_drop, 0) + mat_qty
-
-        level_msg = self._check_level_up(p)
-        update_player(uid, p)
-
-        await interaction.response.send_message(
-            f"📦 You opened a **{box_tier.title()}** and found **🪙 {coins_found:,} coins** and **{mat_qty}x {biome_drop.title()}**!{level_msg}"
         )
 
 
