@@ -181,7 +181,7 @@ class BiomeQuestSelect(discord.ui.Select):
                 loot_preview = ", ".join([f"{qty}x {item.title()}" for item, qty in q["loot"].items()])
                 options.append(
                     discord.SelectOption(
-                        label=f"[Area {q['area']} | Rank {q['rank']}] {q['name']}",
+                        label=f"[Area {q['area']} | Rank {q['rank']}] {q['name']}"[:100],
                         value=q_id,
                         description=f"Loot: {loot_preview}"[:100]
                     )
@@ -219,7 +219,7 @@ class BiomeQuestSelect(discord.ui.Select):
             "target": q_data["target"],
             "coins": q_data["coins"],
             "xp": q_data["xp"],
-            "loot": q_data["loot"]
+            "loot": dict(q_data["loot"])
         }
         update_player(uid, p)
 
@@ -267,29 +267,29 @@ class QuestsCog(commands.Cog):
         )
 
         if active_bq:
-            loot_str = ", ".join([f"{qty}x {item.title()}" for item, qty in active_bq["loot"].items()])
+            loot_str = ", ".join([f"{qty}x {item.title()}" for item, qty in active_bq.get("loot", {}).items()])
             embed.add_field(
                 name=f"🔥 Active Biome Quest: {active_bq['name']} (Rank {active_bq['rank']})",
                 value=(
                     f"*{active_bq['desc']}*\n"
-                    f"**Progress:** `{active_bq['progress']}/{active_bq['target']}`\n"
-                    f"**Loot:** 🪙 {active_bq['coins']:,} • ⭐ {active_bq['xp']:,} XP • 🎁 {loot_str}\n"
+                    f"**Progress:** `{active_bq.get('progress', 0)}/{active_bq['target']}`\n"
+                    f"**Loot:** 🪙 {active_bq.get('coins', 0):,} • ⭐ {active_bq.get('xp', 0):,} XP • 🎁 {loot_str}\n"
                     f"*(Use `/claimbiomequest` once complete!)*"
                 ),
                 inline=False
             )
 
         lines = []
-        for q_id, q in BIOME_QUESTS.items():
+        for q in BIOME_QUESTS.values():
             loot_preview = ", ".join([f"{qty}x {item.title()}" for item, qty in q["loot"].items()])
             if unlocked_area >= q["area"]:
-                lines.append(f"✅ **[Area {q['area']} | Rank {q['rank']}] {q['name']}**\n*Objective:* {q['desc']} | *Loot:* {loot_preview}")
+                lines.append(f"✅ **[A{q['area']} | {q['rank']}] {q['name']}** — *{q['desc']}* ({loot_preview})")
             else:
-                lines.append(f"🔒 ~~**[Area {q['area']} | Rank {q['rank']}] {q['name']}**~~ — *Requires Area {q['area']}*")
+                lines.append(f"🔒 ~~**[A{q['area']} | {q['rank']}] {q['name']}**~~ *(Area {q['area']})*")
 
-        embed.add_field(name="Available & Upcoming Biome Quests", value="\n\n".join(lines[:8]), inline=False)
+        embed.add_field(name="Available & Upcoming Biome Quests", value="\n".join(lines[:8]), inline=False)
         if len(lines) > 8:
-            embed.add_field(name="High-Tier Endgame Quests (Areas 9–15)", value="\n\n".join(lines[8:]), inline=False)
+            embed.add_field(name="High-Tier Endgame Quests (Areas 9–15)", value="\n".join(lines[8:]), inline=False)
 
         embed.set_footer(text="Select an unlocked quest from the dropdown below to accept it!")
         await interaction.response.send_message(embed=embed, view=QuestBoardView(uid, unlocked_area))
@@ -303,18 +303,23 @@ class QuestsCog(commands.Cog):
         if not active_bq:
             return await interaction.response.send_message("❌ You don't have an active biome quest! Pick one from `/questboard`.", ephemeral=True)
 
-        if active_bq["progress"] < active_bq["target"]:
+        progress = active_bq.get("progress", 0)
+        target = active_bq.get("target", 1)
+        if progress < target:
             return await interaction.response.send_message(
-                f"⏳ **In Progress:** `{active_bq['progress']}/{active_bq['target']}` — {active_bq['desc']}",
+                f"⏳ **In Progress:** `{progress}/{target}` — {active_bq.get('desc', '')}",
                 ephemeral=True
             )
 
-        p["wallet"] += active_bq["coins"]
-        p["xp"] += active_bq["xp"]
+        coins_reward = active_bq.get("coins", 0)
+        xp_reward = active_bq.get("xp", 0)
+
+        p["wallet"] = p.get("wallet", 0) + coins_reward
+        p["xp"] = p.get("xp", 0) + xp_reward
         inv = p.setdefault("inventory", {})
 
         loot_lines = []
-        for item_name, qty in active_bq["loot"].items():
+        for item_name, qty in active_bq.get("loot", {}).items():
             inv[item_name] = inv.get(item_name, 0) + qty
             loot_lines.append(f"🎁 +{qty}x **{item_name.title()}**")
 
@@ -327,9 +332,9 @@ class QuestsCog(commands.Cog):
         embed = discord.Embed(
             title=f"🎉 Biome Quest Completed: {active_bq['name']}!",
             description=(
-                f"🪙 **+{active_bq['coins']:,} Coins**\n"
-                f"⭐ **+{active_bq['xp']:,} XP**\n"
-                + "\n".join(loot_lines)
+                f"🪙 **+{coins_reward:,} Coins**\n"
+                f"⭐ **+{xp_reward:,} XP**\n"
+                + ("\n".join(loot_lines) + "\n" if loot_lines else "")
                 + level_msg
             ),
             color=discord.Color.from_str("#F1C40F")
