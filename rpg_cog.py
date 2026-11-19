@@ -234,8 +234,30 @@ class HelpView(discord.ui.View):
     @discord.ui.button(label="⚔️ RPG Core", style=discord.ButtonStyle.primary, custom_id="help_rpg")
     async def rpg_help(self, interaction: discord.Interaction, button: discord.ui.Button):
         embed = discord.Embed(title="✨ Starlight Sandbox - RPG Core Commands", color=discord.Color.blurple())
-        embed.add_field(name="Actions & Hub", value="`/profile` - View stats & action hub\n`/hunt` - Hunt monsters in current biome\n`/adventure` - Embark on an epic adventure\n`/gather wood` - Collect wood\n`/gather fish` - Catch fish\n`/gather mine` - Mine iron ore (Area 5+)\n`/heal` - Use potions or life boosts to recover HP", inline=False)
-        embed.add_field(name="Progression & Economy", value="`/area` - View or travel between biomes\n`/shop` - Browse interactive shop catalog\n`/buy` - Purchase shop items\n`/inventory` - Check items & materials\n`/economy` - Balance, deposit & withdraw buttons\n`/daily` - Claim daily coins\n`/open` - Open loot boxes\n`/craft` - Craft higher gear tiers using materials\n`/quest view` / `claim` / `abandon` - Manage quests", inline=False)
+        embed.add_field(
+            name="Actions & Hub",
+            value=(
+                "`/profile` - View stats & action hub\n"
+                "`/hunt` - Hunt monsters in current biome\n"
+                "`/adventure` - Embark on an epic adventure\n"
+                "`/gather wood` / `fish` / `mine` - Gather resources in your biome\n"
+                "`/heal` - Use potions or life boosts to recover HP"
+            ),
+            inline=False,
+        )
+        embed.add_field(
+            name="Progression & Economy",
+            value=(
+                "`/area` - View biomes/unlocks or travel to an unlocked area\n"
+                "`/inventory` - Check items & materials\n"
+                "`/economy` - Balance, deposit & withdraw button hub\n"
+                "`/daily` - Claim daily coins\n"
+                "`/open` - Open loot boxes\n"
+                "`/quest view` / `claim` / `abandon` - Manage quests\n"
+                "`/givebundle` - Owner-only beta bundle reward command"
+            ),
+            inline=False,
+        )
         await interaction.response.edit_message(embed=embed, view=self)
 
     @discord.ui.button(label="🗺️ Area Expansions", style=discord.ButtonStyle.success, custom_id="help_areas")
