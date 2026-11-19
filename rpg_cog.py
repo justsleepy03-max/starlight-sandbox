@@ -54,11 +54,11 @@ def get_cooldown_multiplier(user_id):
     return 1.0
 
 QUEST_POOL = [
-    {"id": "hunt_monsters", "title": "Monster Slayer", "desc": "Hunt 5 times in the wild", "target": 5, "type": "hunt", "reward_coins": 1000, "reward_xp": 500, "min_area": 1},
-    {"id": "gather_wood", "title": "Lumberjack Duty", "desc": "Collect 15 Wood", "target": 15, "type": "chop", "reward_coins": 800, "reward_xp": 400, "min_area": 1},
-    {"id": "catch_fish", "title": "Master Angler", "desc": "Catch 10 Fish", "target": 10, "type": "fish", "reward_coins": 800, "reward_xp": 400, "min_area": 1},
-    {"id": "mine_ore", "title": "Master Miner", "desc": "Mine 10 Iron Ore", "target": 10, "type": "mine", "reward_coins": 1200, "reward_xp": 600, "min_area": 5},
-    {"id": "forge_gear", "title": "Master Blacksmith", "desc": "Craft or upgrade your gear", "target": 1, "type": "craft", "reward_coins": 2500, "reward_xp": 1000, "min_area": 2},
+    {"id": "hunt_monsters", "title": "Monster Slayer", "desc": "Hunt 5 times in the wild", "target": 5, "type": "hunt", "reward_coins": 500, "reward_xp": 500, "min_area": 1},
+    {"id": "gather_wood", "title": "Lumberjack Duty", "desc": "Collect 15 Wood", "target": 15, "type": "chop", "reward_coins": 500, "reward_xp": 400, "min_area": 1},
+    {"id": "catch_fish", "title": "Master Angler", "desc": "Catch 10 Fish", "target": 10, "type": "fish", "reward_coins": 500, "reward_xp": 400, "min_area": 1},
+    {"id": "mine_ore", "title": "Master Miner", "desc": "Mine 10 Iron Ore", "target": 10, "type": "mine", "reward_coins": 500, "reward_xp": 600, "min_area": 5},
+    {"id": "forge_gear", "title": "Master Blacksmith", "desc": "Craft or upgrade your gear", "target": 1, "type": "craft", "reward_coins": 500, "reward_xp": 1000, "min_area": 2},
 ]
 
 AREA_BIOMES = {
@@ -80,7 +80,7 @@ AREA_BIOMES = {
 }
 
 AREA_UNLOCKS = {
-    1: "Default: /hunt, /adventure, /chop, /fish, /shop, /inventory, /quest",
+    1: "Default: /hunt, /adventure, /chop, /fish, /shop, /inventory, /quest view",
     2: "/enchant, /area, /training",
     3: "/axe, /net, /pickup",
     4: "/ladder, /guild, /farm",
@@ -147,7 +147,7 @@ class HelpView(discord.ui.View):
     async def rpg_help(self, interaction: discord.Interaction, button: discord.ui.Button):
         embed = discord.Embed(title="✨ Starlight Sandbox - RPG Core Commands", color=discord.Color.blurple())
         embed.add_field(name="Actions & Hub", value="`/profile` - View stats & action hub\n`/hunt` - Hunt monsters in current biome\n`/adventure` - Embark on an epic adventure\n`/chop` - Collect wood\n`/fish` - Catch fish\n`/mine` - Mine iron ore (Area 5+)\n`/heal` - Use potions or life boosts to recover HP", inline=False)
-        embed.add_field(name="Progression & Economy", value="`/area` - View or travel between biomes\n`/shop` - Browse interactive shop catalog\n`/buy` - Purchase shop items\n`/inventory` - Check items & materials\n`/bal` - Check wallet & bank\n`/daily` - Claim daily coins\n`/open` - Open loot boxes\n`/craft` - Craft higher gear tiers using materials\n`/quest` / `/claimquest` - Manage quests", inline=False)
+        embed.add_field(name="Progression & Economy", value="`/area` - View or travel between biomes\n`/shop` - Browse interactive shop catalog\n`/buy` - Purchase shop items\n`/inventory` - Check items & materials\n`/bal` - Check wallet & bank\n`/daily` - Claim daily coins\n`/open` - Open loot boxes\n`/craft` - Craft higher gear tiers using materials\n`/quest view` / `claim` / `abandon` - Manage quests", inline=False)
         await interaction.response.edit_message(embed=embed, view=self)
 
     @discord.ui.button(label="🗺️ Area Expansions", style=discord.ButtonStyle.success, custom_id="help_areas")
@@ -168,6 +168,11 @@ class HelpView(discord.ui.View):
 class RpgCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+
+    quest_group = app_commands.Group(
+        name="quest",
+        description="View, claim, or abandon your active RPG quest.",
+    )
 
     def _update_quest_progress(self, p, action_type, amount=1):
         active = p.get("active_quest")
@@ -266,7 +271,7 @@ class RpgCog(commands.Cog):
         await interaction.response.send_message(embed=embed, view=view)
 
     @discord.app_commands.command(name="heal", description="Use a healing bottle, elixir, or life flask from your inventory to restore HP.")
-    @app_commands.describe(item_name="Healing item to use (e.g. minor hp bottle, starlight elixir)", quantity="How many to use (default 1)")
+    @discord.app_commands.describe(item_name="Healing item to use (e.g. minor hp bottle, starlight elixir)", quantity="How many to use (default 1)")
     async def heal(self, interaction: discord.Interaction, item_name: str = None, quantity: int = 1):
         uid = str(interaction.user.id)
         p = get_player(uid)
@@ -498,8 +503,8 @@ class RpgCog(commands.Cog):
         update_player(uid, p)
         await interaction.response.send_message(f"🎁 Claimed daily reward: 🪙 {bonus:,} coins!")
 
-    @discord.app_commands.command(name="quest", description="Check active quest.")
-    async def quest(self, interaction: discord.Interaction):
+    @quest_group.command(name="view", description="Check your active quest or pick up a new one.")
+    async def quest_view(self, interaction: discord.Interaction):
         uid = str(interaction.user.id)
         p = get_player(uid)
         if not p.get("active_quest"):
@@ -518,8 +523,8 @@ class RpgCog(commands.Cog):
         embed.add_field(name=active["title"], value=f"*{active['desc']}*\n\n**Progress:** {active['progress']}/{active['target']}", inline=False)
         await interaction.response.send_message(embed=embed)
 
-    @discord.app_commands.command(name="claimquest", description="Claim quest rewards.")
-    async def claimquest(self, interaction: discord.Interaction):
+    @quest_group.command(name="claim", description="Claim rewards for your completed quest.")
+    async def quest_claim(self, interaction: discord.Interaction):
         uid = str(interaction.user.id)
         p = get_player(uid)
         active = p.get("active_quest")
@@ -533,8 +538,8 @@ class RpgCog(commands.Cog):
         update_player(uid, p)
         await interaction.response.send_message(f"🎉 Quest Completed! Received 🪙 {active['reward_coins']:,} coins!{level_msg}")
 
-    @discord.app_commands.command(name="abandonquest", description="Abandon your current active quest.")
-    async def abandonquest(self, interaction: discord.Interaction):
+    @quest_group.command(name="abandon", description="Abandon your current active quest.")
+    async def quest_abandon(self, interaction: discord.Interaction):
         uid = str(interaction.user.id)
         p = get_player(uid)
         if not p.get("active_quest"):
@@ -542,7 +547,7 @@ class RpgCog(commands.Cog):
             return
         p["active_quest"] = None
         update_player(uid, p)
-        await interaction.response.send_message("🗑️ You have abandoned your active quest. Use `/quest` to pick up a new one!")
+        await interaction.response.send_message("🗑️ You have abandoned your active quest. Use `/quest view` to pick up a new one!")
 
     @discord.app_commands.command(name="open", description="Open a loot box from your inventory.")
     @app_commands.describe(box_tier="Choose the tier of loot box to open")
