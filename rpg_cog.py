@@ -80,11 +80,11 @@ AREA_BIOMES = {
 }
 
 AREA_UNLOCKS = {
-    1: "Default: /hunt, /adventure, /chop, /fish, /shop, /inventory, /quest view",
+    1: "Default: /hunt, /adventure, /gather wood, /gather fish, /shop, /inventory, /quest view",
     2: "/enchant, /area, /training",
     3: "/axe, /net, /pickup",
     4: "/ladder, /guild, /farm",
-    5: "/mine, /multidice, /cook, /casino",
+    5: "/gather mine, /multidice, /cook, /casino",
     6: "/bowsaw, /boat, /pickaxe",
     7: "/refine, /big arena, /alchemy",
     8: "/tractor, /wheel",
@@ -146,7 +146,7 @@ class HelpView(discord.ui.View):
     @discord.ui.button(label="⚔️ RPG Core", style=discord.ButtonStyle.primary, custom_id="help_rpg")
     async def rpg_help(self, interaction: discord.Interaction, button: discord.ui.Button):
         embed = discord.Embed(title="✨ Starlight Sandbox - RPG Core Commands", color=discord.Color.blurple())
-        embed.add_field(name="Actions & Hub", value="`/profile` - View stats & action hub\n`/hunt` - Hunt monsters in current biome\n`/adventure` - Embark on an epic adventure\n`/chop` - Collect wood\n`/fish` - Catch fish\n`/mine` - Mine iron ore (Area 5+)\n`/heal` - Use potions or life boosts to recover HP", inline=False)
+        embed.add_field(name="Actions & Hub", value="`/profile` - View stats & action hub\n`/hunt` - Hunt monsters in current biome\n`/adventure` - Embark on an epic adventure\n`/gather wood` - Collect wood\n`/gather fish` - Catch fish\n`/gather mine` - Mine iron ore (Area 5+)\n`/heal` - Use potions or life boosts to recover HP", inline=False)
         embed.add_field(name="Progression & Economy", value="`/area` - View or travel between biomes\n`/shop` - Browse interactive shop catalog\n`/buy` - Purchase shop items\n`/inventory` - Check items & materials\n`/bal` - Check wallet & bank\n`/daily` - Claim daily coins\n`/open` - Open loot boxes\n`/craft` - Craft higher gear tiers using materials\n`/quest view` / `claim` / `abandon` - Manage quests", inline=False)
         await interaction.response.edit_message(embed=embed, view=self)
 
@@ -172,6 +172,11 @@ class RpgCog(commands.Cog):
     quest_group = app_commands.Group(
         name="quest",
         description="View, claim, or abandon your active RPG quest.",
+    )
+
+    gather_group = app_commands.Group(
+        name="gather",
+        description="Gather wood, fish, or mine ore in your current biome.",
     )
 
     hardmode_group = app_commands.Group(
@@ -488,8 +493,8 @@ class RpgCog(commands.Cog):
             ephemeral=False,
         )
 
-    @discord.app_commands.command(name="chop", description="Collect wood from the local woods.")
-    async def chop(self, interaction: discord.Interaction):
+    @gather_group.command(name="wood", description="Collect wood from the local woods.")
+    async def gather_wood(self, interaction: discord.Interaction):
         await self.execute_chop(interaction)
 
     async def execute_chop(self, interaction: discord.Interaction):
@@ -504,8 +509,8 @@ class RpgCog(commands.Cog):
         crafted_tag = " (✨ Crafted Armor Bonus!)" if p.get("armor_origin") == "crafted" else ""
         await interaction.response.send_message(f"🪓 You collected **{wood}x Wood**!{crafted_tag}{level_msg}", ephemeral=False)
 
-    @discord.app_commands.command(name="fish", description="Catch fish from the local waters.")
-    async def fish(self, interaction: discord.Interaction):
+    @gather_group.command(name="fish", description="Catch fish from the local waters.")
+    async def gather_fish(self, interaction: discord.Interaction):
         await self.execute_fish(interaction)
 
     async def execute_fish(self, interaction: discord.Interaction):
@@ -518,8 +523,8 @@ class RpgCog(commands.Cog):
         update_player(uid, p)
         await interaction.response.send_message(f"🎣 You caught **{fish_caught}x Fish**!{level_msg}", ephemeral=False)
 
-    @discord.app_commands.command(name="mine", description="Mine iron ore and rare crystals (Requires Area 5+).")
-    async def mine(self, interaction: discord.Interaction):
+    @gather_group.command(name="mine", description="Mine iron ore and rare crystals (Requires Area 5+).")
+    async def gather_mine(self, interaction: discord.Interaction):
         uid = str(interaction.user.id)
         p = get_player(uid)
         area = p.get("area", 1)
