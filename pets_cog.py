@@ -5,12 +5,14 @@ import time
 import discord
 from discord import app_commands
 from discord.ext import commands
+from database import get_player, update_player
 
 DATA_DIR = "/app/data"
 PETS_FILE = os.path.join(DATA_DIR, "pets.json")
 
 # Ensure persistent data directory exists
 os.makedirs(DATA_DIR, exist_ok=True)
+
 
 def load_pets_data():
     if not os.path.exists(PETS_FILE):
@@ -21,9 +23,11 @@ def load_pets_data():
     except json.JSONDecodeError:
         return {}
 
+
 def save_pets_data(data):
     with open(PETS_FILE, "w") as f:
         json.dump(data, f, indent=4)
+
 
 # Incubation durations in seconds
 HATCH_TIMES = {
@@ -44,23 +48,24 @@ PET_DATABASE = {
     "Starlight Slime": {"rarity": "Common", "type": "Common Egg", "buff_desc": "+2% Coin bonus on commands", "buff_type": "coin", "value": 0.02},
     "Pebble Crab": {"rarity": "Common", "type": "Common Egg", "buff_desc": "+1 Defense in quests", "buff_type": "defense", "value": 1},
     "Shadow Mouse": {"rarity": "Common", "type": "Common Egg", "buff_desc": "Slightly reduced command cooldowns (-1%)", "buff_type": "cooldown", "value": 0.01},
-    
+
     "Sunwing Finch": {"rarity": "Uncommon", "type": "Golden Egg", "buff_desc": "+5% Expedition speed", "buff_type": "expedition", "value": 0.05},
     "Crystal Hedgehog": {"rarity": "Uncommon", "type": "Golden Egg", "buff_desc": "+5% chance to find bonus crafting materials", "buff_type": "materials", "value": 0.05},
     "Ember Fox": {"rarity": "Rare", "type": "Golden Egg", "buff_desc": "+10% Attack power during RPG battles", "buff_type": "attack", "value": 10},
     "Glowtail Panther": {"rarity": "Rare", "type": "Golden Egg", "buff_desc": "+8% Coin bonus", "buff_type": "coin", "value": 0.08},
-    
+
     "Astral Phoenix": {"rarity": "Epic", "type": "Celestial Egg", "buff_desc": "5% chance to avoid failure on hard quests", "buff_type": "revive", "value": 0.05},
     "Void Turtle": {"rarity": "Epic", "type": "Celestial Egg", "buff_desc": "+15% defense and massive material yield on expeditions", "buff_type": "defense_material", "value": 0.15},
     "Nebula Dragon": {"rarity": "Legendary", "type": "Celestial Egg", "buff_desc": "+25% total coin multiplier & +15 attack power", "buff_type": "coin_attack", "value": (0.25, 15)},
     "Starlight Celestial Spirit": {"rarity": "Legendary", "type": "Celestial Egg", "buff_desc": "+Coin gain, double rare drops, -10% cooldowns", "buff_type": "ultimate", "value": 0.10}
 }
 
+
 class PetsCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @app_commands.command(name="hatch", description="Place an egg into your incubator to start hatching!")
+    @app_commands.command(name="hatch", description="Place an egg from your inventory into your incubator to start hatching!")
     @app_commands.choices(egg_type=[
         app_commands.Choice(name="Common Egg (15m)", value="Common Egg"),
         app_commands.Choice(name="Golden Egg (2h)", value="Golden Egg"),
@@ -69,15 +74,36 @@ class PetsCog(commands.Cog):
     async def hatch(self, interaction: discord.Interaction, egg_type: str):
         user_id = str(interaction.user.id)
         data = load_pets_data()
-        
-        if user_id not in data:
-            data[user_id] = {"inventory": [], "active_pet": None, "incubating": None, "expedition": None}
-
-        user_data = data[user_id]
+        user_data = data.setdefault(user_id, {
+            "inventory": [],
+            "active_pet": None,
+            "incubating": None,
+            "expedition": None,
+        })
 
         if user_data.get("incubating"):
-            await interaction.response.send_message("❌ Your incubator is already busy! Use `/incubator` to check status or `/claim` when it's finished.", ephemeral=True)
+            await interaction.response.send_message(
+                "❌ Your incubator is already busy! Use `/incubator` to check status or `/claim` when it's finished.",
+                ephemeral=True
+            )
             return
+
+        player = get_player(user_id)
+        inv = player.setdefault("inventory", {})
+        egg_key = egg_type.lower()
+        owned_eggs = inv.get(egg_key, 0)
+
+        if owned_eggs < 1:
+            await interaction.response.send_message(
+                f"❌ You don't have a **{egg_type}** in your inventory! Check `/shop` or claim one from a bundle.",
+                ephemeral=True
+            )
+            return
+
+        inv[egg_key] = owned_eggs - 1
+        if inv[egg_key] <= 0:
+            inv.pop(egg_key, None)
+        update_player(user_id, player)
 
         duration = HATCH_TIMES[egg_type]
         finish_time = time.time() + duration
@@ -100,7 +126,7 @@ class PetsCog(commands.Cog):
     async def incubator(self, interaction: discord.Interaction):
         user_id = str(interaction.user.id)
         data = load_pets_data()
-        
+
         user_data = data.get(user_id, {})
         incubating = user_data.get("incubating")
 
@@ -129,8 +155,13 @@ class PetsCog(commands.Cog):
     async def claim(self, interaction: discord.Interaction):
         user_id = str(interaction.user.id)
         data = load_pets_data()
-        
-        user_data = data.get(user_id, {})
+
+        user_data = data.setdefault(user_id, {
+            "inventory": [],
+            "active_pet": None,
+            "incubating": None,
+            "expedition": None,
+        })
         incubating = user_data.get("incubating")
 
         if not incubating:
@@ -156,7 +187,7 @@ class PetsCog(commands.Cog):
                 hatched_pet_name = random.choice(["Sunwing Finch", "Crystal Hedgehog"])
             else:
                 hatched_pet_name = random.choice(["Ember Fox", "Glowtail Panther"])
-                
+
         elif egg_type == "Golden Egg":
             if roll < 0.60:
                 hatched_pet_name = random.choice(["Sunwing Finch", "Crystal Hedgehog"])
@@ -164,12 +195,14 @@ class PetsCog(commands.Cog):
                 hatched_pet_name = random.choice(["Ember Fox", "Glowtail Panther"])
             else:
                 hatched_pet_name = random.choice(["Astral Phoenix", "Void Turtle"])
-                
+
         elif egg_type == "Celestial Egg":
             if roll < 0.70:
                 hatched_pet_name = random.choice(["Astral Phoenix", "Void Turtle"])
             else:
                 hatched_pet_name = random.choice(["Nebula Dragon", "Starlight Celestial Spirit"])
+        else:
+            hatched_pet_name = random.choice(["Starlight Slime", "Pebble Crab", "Shadow Mouse"])
 
         pet_info = PET_DATABASE[hatched_pet_name]
 
@@ -193,13 +226,13 @@ class PetsCog(commands.Cog):
     async def pets(self, interaction: discord.Interaction):
         user_id = str(interaction.user.id)
         data = load_pets_data()
-        
-        user_data = data.get(user_id, {"inventory": [], "active_pet": None})
-        inventory = user_data["inventory"]
-        active_pet = user_data["active_pet"]
+
+        user_data = data.get(user_id, {})
+        inventory = user_data.get("inventory", [])
+        active_pet = user_data.get("active_pet")
 
         embed = discord.Embed(title=f"🐾 {interaction.user.display_name}'s Pet Collection", color=discord.Color.blurple())
-        
+
         if active_pet:
             embed.add_field(name="🟢 Active Companion", value=f"**{active_pet['name']}** ({active_pet['rarity']})\n*Buff:* {active_pet['buff']}", inline=False)
         else:
@@ -217,10 +250,16 @@ class PetsCog(commands.Cog):
     async def equip(self, interaction: discord.Interaction, pet_name: str):
         user_id = str(interaction.user.id)
         data = load_pets_data()
-        
-        user_data = data.get(user_id, {"inventory": [], "active_pet": None})
-        matching_pet = next((p for p in user_data["inventory"] if p["name"].lower() == pet_name.lower()), None)
-        
+
+        user_data = data.setdefault(user_id, {
+            "inventory": [],
+            "active_pet": None,
+            "incubating": None,
+            "expedition": None,
+        })
+        inventory = user_data.get("inventory", [])
+        matching_pet = next((p for p in inventory if p["name"].lower() == pet_name.lower()), None)
+
         if not matching_pet:
             await interaction.response.send_message(f"❌ You don't own a pet named **{pet_name}** in your inventory.", ephemeral=True)
             return
@@ -239,21 +278,27 @@ class PetsCog(commands.Cog):
     async def expedition(self, interaction: discord.Interaction, expedition_type: str):
         user_id = str(interaction.user.id)
         data = load_pets_data()
-        
-        if user_id not in data or not data[user_id].get("active_pet"):
-            await interaction.response.send_message("❌ You must have an active pet equipped (`/equip`) before sending them on an expedition!", ephemeral=True)
+
+        user_data = data.get(user_id, {})
+        active_pet = user_data.get("active_pet")
+        if not active_pet:
+            await interaction.response.send_message(
+                "❌ You must have an active pet equipped (`/equip`) before sending them on an expedition!",
+                ephemeral=True
+            )
             return
 
-        user_data = data[user_id]
         if user_data.get("expedition"):
-            await interaction.response.send_message("❌ Your pet is already out on an expedition! Check status with `/expedition-status` or claim when ready.", ephemeral=True)
+            await interaction.response.send_message(
+                "❌ Your pet is already out on an expedition! Check status with `/expedition-status` or claim when ready.",
+                ephemeral=True
+            )
             return
 
-        active_pet = user_data["active_pet"]
         base_duration = EXPEDITION_TYPES[expedition_type]["duration"]
 
         # Apply Sunwing Finch passive buff (-5% duration)
-        if active_pet["name"] == "Sunwing Finch":
+        if active_pet.get("name") == "Sunwing Finch":
             base_duration = int(base_duration * 0.95)
 
         finish_time = time.time() + base_duration
@@ -277,7 +322,7 @@ class PetsCog(commands.Cog):
     async def expedition_status(self, interaction: discord.Interaction):
         user_id = str(interaction.user.id)
         data = load_pets_data()
-        
+
         user_data = data.get(user_id, {})
         expedition = user_data.get("expedition")
 
@@ -306,8 +351,13 @@ class PetsCog(commands.Cog):
     async def claim_expedition(self, interaction: discord.Interaction):
         user_id = str(interaction.user.id)
         data = load_pets_data()
-        
-        user_data = data.get(user_id, {})
+
+        user_data = data.setdefault(user_id, {
+            "inventory": [],
+            "active_pet": None,
+            "incubating": None,
+            "expedition": None,
+        })
         expedition = user_data.get("expedition")
 
         if not expedition:
@@ -324,19 +374,24 @@ class PetsCog(commands.Cog):
 
         exp_type = expedition["type"]
         pet_name = expedition["pet_name"]
-        info = EXPEDITION_TYPES[exp_type]
+        info = EXPEDITION_TYPES.get(exp_type, {"base_coins": 500})
 
         coins_earned = info["base_coins"]
-        
+
         # Apply coin bonuses from active pet buffs
         active_pet = user_data.get("active_pet")
         if active_pet:
-            if active_pet["name"] == "Glowtail Panther":
+            active_name = active_pet.get("name")
+            if active_name == "Glowtail Panther":
                 coins_earned = int(coins_earned * 1.08)
-            elif active_pet["name"] == "Starlight Slime":
+            elif active_name == "Starlight Slime":
                 coins_earned = int(coins_earned * 1.02)
-            elif active_pet["name"] == "Nebula Dragon":
+            elif active_name == "Nebula Dragon":
                 coins_earned = int(coins_earned * 1.25)
+
+        player = get_player(user_id)
+        player["wallet"] = player.get("wallet", 0) + coins_earned
+        update_player(user_id, player)
 
         # Clear expedition slot
         user_data["expedition"] = None
@@ -347,8 +402,9 @@ class PetsCog(commands.Cog):
             description=f"**{pet_name}** returned safely from the **{exp_type}** with fantastic loot!",
             color=discord.Color.gold()
         )
-        embed.add_field(name="💰 Coins Earned", value=f"{coins_earned:,} Coins", inline=True)
+        embed.add_field(name="💰 Coins Earned", value=f"🪙 {coins_earned:,} Coins (added to wallet)", inline=True)
         await interaction.response.send_message(embed=embed)
+
 
 async def setup(bot):
     await bot.add_cog(PetsCog(bot))
