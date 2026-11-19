@@ -2,8 +2,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-# Update this import if your database file has a different name (e.g. `import database as db`)
-import db
+from database import load_data, get_player, update_player
 
 STARLIGHT_GOLD = 0xF1C40F
 
@@ -113,7 +112,7 @@ class UtilitySelect(discord.ui.Select):
             )
 
         else:  # server_stats
-            data = db.load_data()
+            data = load_data()
             total_players = len(data)
             synced_cmds = len(self.bot.tree.get_commands())
             latency_ms = round(self.bot.latency * 1000)
@@ -161,7 +160,7 @@ class RPGUtilityCog(commands.Cog):
             )
             return
 
-        player = ensure_player_schema(db.get_player(interaction.user.id))
+        player = ensure_player_schema(get_player(interaction.user.id))
         inventory = player["inventory"]
 
         owned_qty = inventory.get(key, inventory.get(item.strip(), 0))
@@ -174,7 +173,7 @@ class RPGUtilityCog(commands.Cog):
 
         previous_item = player["equipment"].get(slot)
         player["equipment"][slot] = key
-        db.update_player(interaction.user.id, player)
+        update_player(interaction.user.id, player)
 
         prev_label = previous_item.replace("_", " ").title() if previous_item else "None"
         new_label = key.replace("_", " ").title()
