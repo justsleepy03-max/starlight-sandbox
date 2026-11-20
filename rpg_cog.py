@@ -10,6 +10,8 @@ from items import ARMORS
 
 DATA_DIR = "/app/data"
 PETS_FILE = os.path.join(DATA_DIR, "pets.json")
+DAILY_COOLDOWN_SECONDS = 24 * 60 * 60
+DAILY_COIN_REWARD = 500
 
 HEALING_ITEMS = {
     "minor hp bottle": {"heal": 35, "max_hp_boost": 0},
@@ -426,6 +428,38 @@ class RpgCog(commands.Cog):
         p["wallet"] = wallet + amount
         update_player(uid, p)
         return True, f"💸 Withdrew **🪙 {amount:,}** coins to your wallet!", self.build_balance_embed(uid, display_name)
+
+    @discord.app_commands.command(name="daily", description="Claim your daily 500 coins reward (24-hour cooldown).")
+    async def daily(self, interaction: discord.Interaction):
+        uid = str(interaction.user.id)
+        p = get_player(uid)
+        now = time.time()
+        last_daily = p.get("last_daily", 0)
+
+        try:
+            last_daily_ts = float(last_daily)
+        except (TypeError, ValueError):
+            last_daily_ts = 0.0
+
+        elapsed = now - last_daily_ts
+        if elapsed < DAILY_COOLDOWN_SECONDS:
+            remaining = int(DAILY_COOLDOWN_SECONDS - elapsed)
+            hours, rem = divmod(remaining, 3600)
+            minutes, seconds = divmod(rem, 60)
+            await interaction.response.send_message(
+                f"⏳ You've already claimed your daily reward! Come back in **{hours}h {minutes}m {seconds}s**.",
+                ephemeral=True,
+            )
+            return
+
+        p["last_daily"] = now
+        p["wallet"] = p.get("wallet", 0) + DAILY_COIN_REWARD
+        level_msg = self._check_level_up(p)
+        update_player(uid, p)
+
+        await interaction.response.send_message(
+            f"🎁 **Daily Reward Claimed!** You received **+🪙 {DAILY_COIN_REWARD:,}** coins in your wallet.{level_msg}"
+        )
 
     @discord.app_commands.command(
         name="givebundle",
