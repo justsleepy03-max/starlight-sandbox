@@ -65,6 +65,20 @@ class StatsLeaderboardCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
+    async def _resolve_member_name(self, guild: discord.Guild | None, uid_str: str) -> str:
+        if guild is not None and uid_str.isdigit():
+            uid_int = int(uid_str)
+            member = guild.get_member(uid_int)
+            if member is not None:
+                return member.display_name
+            try:
+                fetched = await guild.fetch_member(uid_int)
+                if fetched is not None:
+                    return fetched.display_name
+            except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+                pass
+        return f"Adventurer ({uid_str})"
+
     @app_commands.command(name="stats", description="View a player's RPG stats, weapon, dungeon floor, and active pet.")
     @app_commands.describe(member="Player to inspect (defaults to you)")
     async def stats(self, interaction: discord.Interaction, member: discord.Member | None = None):
@@ -79,6 +93,8 @@ class StatsLeaderboardCog(commands.Cog):
             )
 
         wallet = int(p.get("wallet", 0))
+        bank = int(p.get("bank", 0))
+        total_coins = wallet + bank
         level = int(p.get("level", 1))
         xp = int(p.get("xp", 0))
         weapon_text = _extract_weapon_text(p)
@@ -91,7 +107,11 @@ class StatsLeaderboardCog(commands.Cog):
             title=f"📊 {target.display_name}'s RPG Stats",
             color=discord.Color.from_str("#4DF4FF")
         )
-        embed.add_field(name="🪙 Balance", value=f"{wallet:,} coins", inline=True)
+        embed.add_field(
+            name="🪙 Total Coins",
+            value=f"{total_coins:,} coins *(W: {wallet:,} • B: {bank:,})*",
+            inline=True
+        )
         embed.add_field(name="⭐ Level & XP", value=f"Lv. {level:,} ({xp:,} XP)", inline=True)
         embed.add_field(name="⚔️ Weapon", value=weapon_text, inline=True)
         embed.add_field(name="🏰 Dungeon Floor", value=f"Floor {dungeon_floor}", inline=True)
@@ -102,11 +122,13 @@ class StatsLeaderboardCog(commands.Cog):
     @app_commands.command(name="leaderboard", description="View the top RPG players in this server.")
     @app_commands.describe(category="Ranking category")
     @app_commands.choices(category=[
-        app_commands.Choice(name="Coins (Wallet)", value="wallet"),
+        app_commands.Choice(name="Total Coins (Wallet + Bank)", value="coins"),
         app_commands.Choice(name="Level & XP", value="level"),
         app_commands.Choice(name="Dungeon Floor", value="dungeon"),
     ])
-    async def leaderboard(self, interaction: discord.Interaction, category: str = "wallet"):
+    async def leaderboard(self, interaction: discord.Interaction, category: str = "coins"):
+        await interaction.response.defer()
+
         all_players = get_all_players()
         guild = interaction.guild
 
@@ -116,27 +138,30 @@ class StatsLeaderboardCog(commands.Cog):
                 continue
 
             uid_str = str(uid)
-            member = guild.get_member(int(uid_str)) if (guild is not None and uid_str.isdigit()) else None
-            if guild is not None and member is None:
-                continue
+            name = await self._resolve_member_name(guild, uid_str)
 
-            name = member.display_name if member else f"Adventurer ({uid_str})"
             wallet = int(p.get("wallet", 0))
+            bank = int(p.get("bank", 0))
+            total_coins = wallet + bank
             level = int(p.get("level", 1))
             xp = int(p.get("xp", 0))
             floor = _extract_dungeon_floor(p)
             pet_name, pet_lvl = _extract_pet_text(p)
-            pet_tag = f" • 🐾 Lv.{pet_lvl}" if pet_lvl > 0 else ""
+            pet_display = f"{pet_name} (Lv.{pet_lvl})" if pet_lvl > 0 else "None"
 
             if category == "level":
-                score = (level, xp, wallet)
-                stat_line = f"Lv. **{level:,}** *({xp:,} XP)*{pet_tag}"
+                score = (level, xp, total_coins, floor)
             elif category == "dungeon":
-                score = (floor, level, wallet)
-                stat_line = f"Floor **{floor}** • Lv. {level:,}{pet_tag}"
+                score = (floor, level, total_coins, xp)
             else:
-                score = (wallet, level, xp)
-                stat_line = f"🪙 **{wallet:,}** • Lv. {level:,}{pet_tag}"
+                score = (total_coins, level, xp, floor)
+
+            stat_line = (
+                f"🪙 **{total_coins:,}** *(W: {wallet:,} / B: {bank:,})* • "
+                f"⭐ **Lv. {level:,}** *({xp:,} XP)* • "
+                f"🏰 **Floor {floor}** • "
+                f"🐾 **{pet_display}**"
+            )
 
             rows.append((score, name, stat_line))
 
@@ -144,7 +169,7 @@ class StatsLeaderboardCog(commands.Cog):
         top_10 = rows[:10]
 
         titles = {
-            "wallet": "🪙 Server Coin Leaderboard",
+            "coins": "🪙 Server Total Coins Leaderboard",
             "level": "⭐ Server Level & XP Leaderboard",
             "dungeon": "🏰 Server Dungeon Floor Leaderboard",
         }
@@ -164,7 +189,7 @@ class StatsLeaderboardCog(commands.Cog):
                 lines.append(f"{prefix} **{name}** — {stat_line}")
             embed.description = "\n".join(lines)
 
-        await interaction.response.send_message(embed=embed)
+        await interaction.followup.send(embed=embed)
 
 
 async def setup(bot):
