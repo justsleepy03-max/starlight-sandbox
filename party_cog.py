@@ -1,6 +1,6 @@
+import random
 import discord
 from discord.ext import commands
-import random
 
 # --- CARDS AGAINST HUMANITY DATA ---
 BLACK_CARDS = [
@@ -12,7 +12,7 @@ BLACK_CARDS = [
     "What is my secret superpower? _",
     "What did I bring back from the time machine? _",
     "What's the best part of waking up? _",
-    "Step 1: _. Step 2: Profit."
+    "Step 1: _. Step 2: Profit.",
 ]
 
 WHITE_CARDS = [
@@ -23,7 +23,7 @@ WHITE_CARDS = [
     "A slow Wi-Fi connection.",
     "Getting caught sleepwalking in a Denny's parking lot.",
     "Absolute silence.",
-    "A pigeon with an attitude problem."
+    "A pigeon with an attitude problem.",
 ]
 
 # --- TRIVIA DATA ---
@@ -31,12 +31,13 @@ TRIVIA_QUESTIONS = [
     {"question": "What is the capital of France?", "options": ["London", "Berlin", "Paris", "Madrid"], "answer": "Paris"},
     {"question": "Which planet is known as the Red Planet?", "options": ["Venus", "Mars", "Jupiter", "Saturn"], "answer": "Mars"},
     {"question": "What is 5 + 5 * 2?", "options": ["20", "15", "10", "25"], "answer": "15"},
-    {"question": "Which programming language shares its name with a snake?", "options": ["Java", "Python", "C++", "Ruby"], "answer": "Python"}
+    {"question": "Which programming language shares its name with a snake?", "options": ["Java", "Python", "C++", "Ruby"], "answer": "Python"},
 ]
 
 # --- UNO DATA ---
 UNO_COLORS = ["Red", "Blue", "Green", "Yellow"]
 UNO_VALUES = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "Skip", "Reverse", "Draw Two"]
+
 
 class PartyCog(commands.Cog):
     def __init__(self, bot):
@@ -77,7 +78,7 @@ class PartyCog(commands.Cog):
 
         grid_rows = []
         for i in range(0, 25, 5):
-            row = " | ".join([f"{str(num):2}" for num in board_numbers[i:i+5]])
+            row = " | ".join([f"{str(num):2}" for num in board_numbers[i : i + 5]])
             grid_rows.append(row)
 
         board_text = "```\n" + "\n-----\n".join(grid_rows) + "\n```"
@@ -97,7 +98,11 @@ class PartyCog(commands.Cog):
     @discord.app_commands.command(name="wordchain", description="Start a Word Chain game prompt!")
     async def wordchain(self, interaction: discord.Interaction):
         starting_word = random.choice(["Dragon", "Galaxy", "Coffee", "Python", "Shadow", "Rocket"])
-        embed = discord.Embed(title="⛓️ Word Chain", description=f"The starting word is: **{starting_word}**\nReply with a word starting with the last letter!", color=discord.Color.purple())
+        embed = discord.Embed(
+            title="⛓️ Word Chain",
+            description=f"The starting word is: **{starting_word}**\nReply with a word starting with the last letter!",
+            color=discord.Color.purple(),
+        )
         await interaction.response.send_message(embed=embed)
 
     @discord.app_commands.command(name="truth", description="Get a random Truth prompt!")
@@ -105,7 +110,7 @@ class PartyCog(commands.Cog):
         prompts = [
             "What is the weirdest food combination you secretly enjoy?",
             "If you could live in any video game world, which one would it be?",
-            "What was your most embarrassing moment in an online game?"
+            "What was your most embarrassing moment in an online game?",
         ]
         embed = discord.Embed(title="🤫 Truth", description=random.choice(prompts), color=discord.Color.teal())
         await interaction.response.send_message(embed=embed)
@@ -115,7 +120,7 @@ class PartyCog(commands.Cog):
         prompts = [
             "Type your next three messages using only emojis.",
             "Send a screenshot of your current desktop wallpaper in chat.",
-            "Compliment the person above you in the most dramatic way possible."
+            "Compliment the person above you in the most dramatic way possible.",
         ]
         embed = discord.Embed(title="🔥 Dare", description=random.choice(prompts), color=discord.Color.orange())
         await interaction.response.send_message(embed=embed)
@@ -124,8 +129,15 @@ class PartyCog(commands.Cog):
     async def mafia(self, interaction: discord.Interaction):
         roles = ["Mafia", "Detective", "Doctor", "Civilian", "Civilian", "Civilian"]
         assigned_role = random.choice(roles)
-        await interaction.user.send(f"🤫 Your secret role for this game is: **{assigned_role}**")
-        await interaction.response.send_message("🕵️ Roles have been secretly assigned via DM!", ephemeral=True)
+        try:
+            await interaction.user.send(f"🤫 Your secret role for this game is: **{assigned_role}**")
+            await interaction.response.send_message("🕵️ Roles have been secretly assigned via DM!", ephemeral=True)
+        except discord.Forbidden:
+            await interaction.response.send_message(
+                "❌ I couldn't send you a DM! Please enable Direct Messages from server members and try `/mafia` again.",
+                ephemeral=True,
+            )
+
 
 async def setup(bot):
     await bot.add_cog(PartyCog(bot))
