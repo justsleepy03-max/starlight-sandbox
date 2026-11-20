@@ -553,6 +553,68 @@ class RpgCog(commands.Cog):
         view = RPGActionView(self, uid)
         await interaction.response.send_message(embed=embed, view=view)
 
+    @discord.app_commands.command(name="area", description="View unlocked areas or travel to an unlocked biome (Areas 1–15).")
+    @app_commands.describe(area="Area number (1–15) to travel to")
+    async def area(self, interaction: discord.Interaction, area: int | None = None):
+        uid = str(interaction.user.id)
+        p = get_player(uid)
+
+        level = int(p.get("level", 1))
+        unlocked = int(p.get("unlocked_area", p.get("area", 1)))
+
+        eligible = 1
+        for area_id, req_level in AREA_LEVEL_REQUIREMENTS.items():
+            if level >= req_level:
+                eligible = area_id
+        if eligible > unlocked:
+            unlocked = eligible
+            p["unlocked_area"] = unlocked
+
+        current_area = int(p.get("area", 1))
+
+        if area is None:
+            current_biome = AREA_BIOMES.get(current_area, {}).get("name", "Unknown")
+            lines = []
+            for a_id in range(1, 16):
+                b_name = AREA_BIOMES.get(a_id, {}).get("name", "Unknown")
+                req_lvl = AREA_LEVEL_REQUIREMENTS.get(a_id, 1)
+                marker = "📍 " if a_id == current_area else ("✅ " if a_id <= unlocked else "🔒 ")
+                lines.append(f"{marker}**Area {a_id}:** {b_name} *(Lv. {req_lvl}+)*")
+
+            embed = discord.Embed(
+                title="🗺️ Biomes & Area Travel",
+                description="\n".join(lines),
+                color=discord.Color.green(),
+            )
+            embed.add_field(
+                name="Current Location",
+                value=f"Area {current_area} (**{current_biome}**) • Highest Unlocked: **Area {unlocked}**",
+                inline=False,
+            )
+            embed.set_footer(text="Use /area area:<number> to travel to an unlocked biome.")
+            update_player(uid, p)
+            await interaction.response.send_message(embed=embed)
+            return
+
+        if area < 1 or area > 15:
+            await interaction.response.send_message("❌ Choose an area between **1** and **15**.", ephemeral=True)
+            return
+
+        if area > unlocked:
+            req_lvl = AREA_LEVEL_REQUIREMENTS.get(area, 1)
+            await interaction.response.send_message(
+                f"🔒 **Area {area}** is locked! Reach **Level {req_lvl}** (highest unlocked: **Area {unlocked}**).",
+                ephemeral=True,
+            )
+            return
+
+        p["area"] = area
+        update_player(uid, p)
+        biome_name = AREA_BIOMES.get(area, {}).get("name", "Unknown Biome")
+        unlock_info = AREA_UNLOCKS.get(area, "")
+        unlock_line = f"\n🔓 *Unlocks:* {unlock_info}" if unlock_info else ""
+        await interaction.response.send_message(f"🧭 Traveled to **Area {area} — {biome_name}**!{unlock_line}")
+
     @discord.app_commands.command(name="heal", description="Use a healing bottle, elixir, or life flask from your inventory to restore HP.")
     @app_commands.describe(item_name="Healing item to use (e.g. minor hp bottle, starlight elixir)", quantity="How many to use (default 1)")
     async def heal(self, interaction: discord.Interaction, item_name: str = None, quantity: int = 1):
