@@ -5,6 +5,12 @@ from database import get_player, update_player
 from items import SWORDS, ARMORS, HORSES, MISC_ITEMS, PET_EGGS, BUNDLES, RESOURCES, PLUSHIES
 
 
+def _truncate_field(text: str, limit: int = 1020) -> str:
+    if len(text) <= limit:
+        return text
+    return text[: limit - 15].rsplit("\n", 1)[0] + "\n*...more in /shop*"
+
+
 def build_master_catalog():
     """Builds a lowercase item lookup dictionary from all catalogs in items.py."""
     catalog = {}
@@ -68,30 +74,46 @@ class ShopCog(commands.Cog):
     def get_shop_embed(self, page: int) -> discord.Embed:
         if page == 1:
             embed = discord.Embed(title="🛒 Starlight Shop - Page 1/5 (Weapons & Armor)", color=discord.Color.blue())
-            swords_text = "\n".join([f"⚔️ **{data['name']}** (T{tier}) | 🪙 {data['price']:,}" for tier, data in SWORDS.items()])
-            armors_text = "\n".join([f"🛡️ **{data['name']}** (T{tier}) | 🪙 {data['price']:,}" for tier, data in ARMORS.items()])
-            embed.add_field(name="Swords (Tiers 1–15)", value=swords_text, inline=True)
-            embed.add_field(name="Armor Sets (Tiers 1–15)", value=armors_text, inline=True)
+            swords_text = _truncate_field(
+                "\n".join([f"⚔️ **{data['name']}** (T{tier}) | 🪙 {data['price']:,}" for tier, data in SWORDS.items()])
+            )
+            armors_text = _truncate_field(
+                "\n".join([f"🛡️ **{data['name']}** (T{tier}) | 🪙 {data['price']:,}" for tier, data in ARMORS.items()])
+            )
+            embed.add_field(name="Swords (Tiers 1–15)", value=swords_text or "None", inline=True)
+            embed.add_field(name="Armor Sets (Tiers 1–15)", value=armors_text or "None", inline=True)
         elif page == 2:
             embed = discord.Embed(title="🛒 Starlight Shop - Page 2/5 (Eggs & Utilities)", color=discord.Color.blue())
-            eggs_text = "\n".join([f"🥚 **{name}** | 🪙 {data['price']:,}\n*{data['desc']}*" for name, data in PET_EGGS.items()])
-            misc_text = "\n".join([f"🧪 **{name}** | 🪙 {data['price']:,}\n*{data['desc']}*" for name, data in MISC_ITEMS.items() if "lootbox" not in name])
-            embed.add_field(name="Pet Eggs (Incl. Transcendent)", value=eggs_text, inline=False)
-            embed.add_field(name="Utilities, Consumables & Boosts", value=misc_text, inline=False)
+            eggs_text = _truncate_field(
+                "\n".join([f"🥚 **{name}** | 🪙 {data['price']:,}\n*{data['desc']}*" for name, data in PET_EGGS.items()])
+            )
+            misc_text = _truncate_field(
+                "\n".join([f"🧪 **{name}** | 🪙 {data['price']:,}\n*{data['desc']}*" for name, data in MISC_ITEMS.items() if "lootbox" not in name])
+            )
+            embed.add_field(name="Pet Eggs (Incl. Transcendent)", value=eggs_text or "None", inline=False)
+            embed.add_field(name="Utilities, Consumables & Boosts", value=misc_text or "None", inline=False)
         elif page == 3:
             embed = discord.Embed(title="✨ Starlight Shop - Page 3/5 (Lootboxes & Bundles)", color=discord.Color.purple())
-            lootboxes_text = "\n".join([f"📦 **{name}** | 🪙 {data['price']:,}\n*{data['desc']}*" for name, data in MISC_ITEMS.items() if "lootbox" in name])
-            bundles_text = "\n\n".join([f"🎁 **{b_name}** | 🪙 {data['price']:,}\n*Contents: {', '.join(data['contents'].keys())}*" for b_name, data in BUNDLES.items()])
-            embed.add_field(name="Lootboxes", value=lootboxes_text, inline=False)
-            embed.add_field(name="Starlight Bundles", value=bundles_text, inline=False)
+            lootboxes_text = _truncate_field(
+                "\n".join([f"📦 **{name}** | 🪙 {data['price']:,}\n*{data['desc']}*" for name, data in MISC_ITEMS.items() if "lootbox" in name])
+            )
+            bundles_text = _truncate_field(
+                "\n\n".join([f"🎁 **{b_name}** | 🪙 {data['price']:,}\n*Contents: {', '.join(data['contents'].keys())}*" for b_name, data in BUNDLES.items()])
+            )
+            embed.add_field(name="Lootboxes", value=lootboxes_text or "None", inline=False)
+            embed.add_field(name="Starlight Bundles", value=bundles_text or "None", inline=False)
         elif page == 4:
             embed = discord.Embed(title="🪵 Starlight Shop - Page 4/5 (Crafting Resources)", color=discord.Color.green())
-            res_text = "\n".join([f"🧱 **{name}** | 🪙 {data['price']:,}\n*{data['desc']}*" for name, data in RESOURCES.items()])
-            embed.add_field(name="Raw Materials & Catalysts", value=res_text, inline=False)
+            res_text = _truncate_field(
+                "\n".join([f"🧱 **{name}** | 🪙 {data['price']:,}\n*{data['desc']}*" for name, data in RESOURCES.items()])
+            )
+            embed.add_field(name="Raw Materials & Catalysts", value=res_text or "None", inline=False)
         else:
             embed = discord.Embed(title="🧸 Starlight Shop - Page 5/5 (Collectible Plushies)", color=discord.Color.magenta())
-            plush_text = "\n".join([f"🧸 **{name}** | 🪙 {data['price']:,}\n*{data['desc']}*" for name, data in PLUSHIES.items()])
-            embed.add_field(name="Hoarder's Plushie Collection", value=plush_text, inline=False)
+            plush_text = _truncate_field(
+                "\n".join([f"🧸 **{name}** | 🪙 {data['price']:,}\n*{data['desc']}*" for name, data in PLUSHIES.items()])
+            )
+            embed.add_field(name="Hoarder's Plushie Collection", value=plush_text or "None", inline=False)
 
         embed.set_footer(text="Use /buy item_name:<name> quantity:<amount> to purchase! (Use /economy for wallet & bank)")
         return embed
