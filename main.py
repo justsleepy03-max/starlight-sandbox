@@ -11,25 +11,34 @@ intents.message_content = True
 
 
 class StarlightBot(commands.Bot):
-    async def setup_hook(self):
-        await self.load_extension("rpg_cog")
-        await self.load_extension("shop_cog")
-        await self.load_extension("crafting_cog")
-        await self.load_extension("party_cog")
-        await self.load_extension("quests_cog")
-        await self.load_extension("tickets_cog")
-        await self.load_extension("embed_cog")
-        await self.load_extension("pets_cog")
-        await self.load_extension("inventory_cog")
-        await self.load_extension("marketplace_cog")
-        await self.load_extension("guilds_cog")
-        await self.load_extension("dungeons_cog")  # Added 100-Floor Starlight Spire Cog!
-        await self.load_extension("area_expansions_cog")  # Added Area-Locked Expansion Commands!
-        await self.load_extension("utility_cog")  # Added /utility sub-menu & /equip commands!
-        await self.load_extension("stats_leaderboard_cog")  # Added /stats & /leaderboard cog!
+    def __init__(self):
+        super().__init__(command_prefix="!", intents=intents)
+        self._has_printed_ready = False
 
-        TEST_GUILD_ID = 1570758404476244120
-        guild = discord.Object(id=TEST_GUILD_ID)
+    async def setup_hook(self):
+        extensions = [
+            "rpg_cog",
+            "shop_cog",
+            "crafting_cog",
+            "party_cog",
+            "quests_cog",
+            "tickets_cog",
+            "embed_cog",
+            "pets_cog",
+            "inventory_cog",
+            "marketplace_cog",
+            "guilds_cog",
+            "dungeons_cog",          # Added 100-Floor Starlight Spire Cog!
+            "area_expansions_cog",   # Added Area-Locked Expansion Commands!
+            "utility_cog",           # Added /utility sub-menu & /equip commands!
+            "stats_leaderboard_cog", # Added /stats & /leaderboard cog!
+        ]
+
+        for ext in extensions:
+            await self.load_extension(ext)
+
+        test_guild_id = 1570758404476244120
+        guild = discord.Object(id=test_guild_id)
 
         try:
             self.tree.copy_global_to(guild=guild)
@@ -39,13 +48,15 @@ class StarlightBot(commands.Bot):
             print(f"Failed to sync tree: {e}")
 
 
-bot = StarlightBot(command_prefix="!", intents=intents)
+bot = StarlightBot()
 
 
 @bot.event
 async def on_ready():
-    print(f"Logged in as {bot.user.name} (ID: {bot.user.id})")
-    print("Starlight RPG engine is fully online!")
+    if not bot._has_printed_ready:
+        bot._has_printed_ready = True
+        print(f"Logged in as {bot.user.name} (ID: {bot.user.id})")
+        print("Starlight RPG engine is fully online!")
 
 
 bot.run(TOKEN)
