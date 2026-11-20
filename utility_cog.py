@@ -1,3 +1,4 @@
+import math
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -23,8 +24,9 @@ AREAS_CATALOG = {
 
 
 class UtilitySelect(discord.ui.Select):
-    def __init__(self, bot: commands.Bot):
+    def __init__(self, bot: commands.Bot, user_id: str):
         self.bot = bot
+        self.user_id = user_id
         options = [
             discord.SelectOption(
                 label="Items & Recipes",
@@ -53,6 +55,13 @@ class UtilitySelect(discord.ui.Select):
         )
 
     async def callback(self, interaction: discord.Interaction):
+        if str(interaction.user.id) != self.user_id:
+            await interaction.response.send_message(
+                "❌ This utility menu isn't yours!",
+                ephemeral=True,
+            )
+            return
+
         choice = self.values[0]
 
         if choice == "items_recipes":
@@ -94,15 +103,20 @@ class UtilitySelect(discord.ui.Select):
 
         else:  # server_stats
             data = load_data()
-            total_players = len(data)
+            total_players = len(data) if isinstance(data, dict) else 0
             synced_cmds = len(self.bot.tree.get_commands())
-            latency_ms = round(self.bot.latency * 1000)
+            raw_latency = self.bot.latency
+            latency_text = (
+                f"`{round(raw_latency * 1000)} ms`"
+                if isinstance(raw_latency, (int, float)) and math.isfinite(raw_latency)
+                else "`N/A`"
+            )
 
             embed = discord.Embed(
                 title="🛠️ Utility — Server & Bot Stats",
                 color=STARLIGHT_GOLD,
             )
-            embed.add_field(name="Bot Latency", value=f"`{latency_ms} ms`", inline=True)
+            embed.add_field(name="Bot Latency", value=latency_text, inline=True)
             embed.add_field(name="Synced Commands", value=f"`{synced_cmds}`", inline=True)
             embed.add_field(name="Saved RPG Profiles", value=f"`{total_players}`", inline=True)
             if interaction.guild:
@@ -116,9 +130,9 @@ class UtilitySelect(discord.ui.Select):
 
 
 class UtilityView(discord.ui.View):
-    def __init__(self, bot: commands.Bot):
+    def __init__(self, bot: commands.Bot, user_id: str):
         super().__init__(timeout=120)
-        self.add_item(UtilitySelect(bot))
+        self.add_item(UtilitySelect(bot, user_id))
 
 
 class RPGUtilityCog(commands.Cog):
@@ -137,7 +151,7 @@ class RPGUtilityCog(commands.Cog):
         )
         await interaction.response.send_message(
             embed=embed,
-            view=UtilityView(self.bot),
+            view=UtilityView(self.bot, str(interaction.user.id)),
             ephemeral=True,
         )
 
