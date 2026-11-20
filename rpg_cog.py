@@ -832,6 +832,113 @@ class RpgCog(commands.Cog):
         
         await interaction.response.send_message(f"🗺️ **Adventure in {biome_name}**: +🪙 {earned_coins:,} | +⭐ {earned_xp:,} XP | +{drop_qty}x {biome_drop.title()}{level_msg}", ephemeral=False)
 
+    # --- GATHERING COMMANDS & PROFILE BUTTON HANDLERS ---
+    async def execute_chop(self, interaction: discord.Interaction):
+        uid = str(interaction.user.id)
+        p = get_player(uid)
+        inv = p.setdefault("inventory", {})
+        area = p.get("area", 1)
+        biome = AREA_BIOMES.get(area, {})
+        biome_name = biome.get("name", "Unknown Biome")
+        biome_drop = biome.get("drop", "soft bark")
+
+        _, gather_mult = self._get_gear_multipliers(p)
+        wood_qty = max(1, int(random.randint(3, 6) * area * gather_mult))
+        bonus_qty = max(1, int(random.randint(1, 2) * gather_mult))
+        earned_xp = random.randint(10, 22) * area
+
+        inv["wood"] = inv.get("wood", 0) + wood_qty
+        inv[biome_drop] = inv.get(biome_drop, 0) + bonus_qty
+        p["xp"] = p.get("xp", 0) + earned_xp
+
+        self._update_quest_progress(p, "chop", wood_qty)
+        self._advance_biome_quest(p, "chop", wood_qty)
+        level_msg = self._check_level_up(p)
+        update_player(uid, p)
+
+        crafted_tag = " (✨ Crafted Armor Bonus!)" if p.get("armor_origin") == "crafted" else ""
+        await interaction.response.send_message(
+            f"🪓 **Chopped in {biome_name}**: +{wood_qty}x Wood | +{bonus_qty}x {biome_drop.title()}{crafted_tag} | +⭐ {earned_xp:,} XP{level_msg}",
+            ephemeral=False,
+        )
+
+    async def execute_fish(self, interaction: discord.Interaction):
+        uid = str(interaction.user.id)
+        p = get_player(uid)
+        inv = p.setdefault("inventory", {})
+        area = p.get("area", 1)
+        biome = AREA_BIOMES.get(area, {})
+        biome_name = biome.get("name", "Unknown Biome")
+        biome_drop = biome.get("drop", "river pearl")
+
+        _, gather_mult = self._get_gear_multipliers(p)
+        fish_qty = max(1, int(random.randint(2, 5) * area * gather_mult))
+        bonus_qty = max(1, int(random.randint(1, 2) * gather_mult))
+        earned_xp = random.randint(10, 22) * area
+
+        inv["fish"] = inv.get("fish", 0) + fish_qty
+        inv[biome_drop] = inv.get(biome_drop, 0) + bonus_qty
+        p["xp"] = p.get("xp", 0) + earned_xp
+
+        self._update_quest_progress(p, "fish", fish_qty)
+        self._advance_biome_quest(p, "fish", fish_qty)
+        level_msg = self._check_level_up(p)
+        update_player(uid, p)
+
+        crafted_tag = " (✨ Crafted Armor Bonus!)" if p.get("armor_origin") == "crafted" else ""
+        await interaction.response.send_message(
+            f"🎣 **Fished in {biome_name}**: +{fish_qty}x Fish | +{bonus_qty}x {biome_drop.title()}{crafted_tag} | +⭐ {earned_xp:,} XP{level_msg}",
+            ephemeral=False,
+        )
+
+    async def execute_mine(self, interaction: discord.Interaction):
+        uid = str(interaction.user.id)
+        p = get_player(uid)
+        area = p.get("area", 1)
+        if area < 5:
+            await interaction.response.send_message(
+                "❌ Mining unlocks in **Area 5 (Crystal Caverns)** or higher!",
+                ephemeral=True,
+            )
+            return
+
+        inv = p.setdefault("inventory", {})
+        biome = AREA_BIOMES.get(area, {})
+        biome_name = biome.get("name", "Unknown Biome")
+        biome_drop = biome.get("drop", "crystal shard")
+
+        _, gather_mult = self._get_gear_multipliers(p)
+        ore_qty = max(1, int(random.randint(2, 5) * area * gather_mult))
+        bonus_qty = max(1, int(random.randint(1, 2) * gather_mult))
+        earned_xp = random.randint(14, 28) * area
+
+        inv["iron ore"] = inv.get("iron ore", 0) + ore_qty
+        inv[biome_drop] = inv.get(biome_drop, 0) + bonus_qty
+        p["xp"] = p.get("xp", 0) + earned_xp
+
+        self._update_quest_progress(p, "mine", ore_qty)
+        self._advance_biome_quest(p, "mine", ore_qty)
+        level_msg = self._check_level_up(p)
+        update_player(uid, p)
+
+        crafted_tag = " (✨ Crafted Armor Bonus!)" if p.get("armor_origin") == "crafted" else ""
+        await interaction.response.send_message(
+            f"⛏️ **Mined in {biome_name}**: +{ore_qty}x Iron Ore | +{bonus_qty}x {biome_drop.title()}{crafted_tag} | +⭐ {earned_xp:,} XP{level_msg}",
+            ephemeral=False,
+        )
+
+    @gather_group.command(name="wood", description="Chop wood in your current biome.")
+    async def gather_wood(self, interaction: discord.Interaction):
+        await self.execute_chop(interaction)
+
+    @gather_group.command(name="fish", description="Catch fish in your current biome.")
+    async def gather_fish(self, interaction: discord.Interaction):
+        await self.execute_fish(interaction)
+
+    @gather_group.command(name="mine", description="Mine iron ore and gems in your current biome (Requires Area 5+).")
+    async def gather_mine(self, interaction: discord.Interaction):
+        await self.execute_mine(interaction)
+
     @hardmode_group.command(name="hunt", description="Hunt hardmode monsters in your current biome (Requires Area 13+).")
     async def hardmode_hunt(self, interaction: discord.Interaction):
         uid = str(interaction.user.id)
