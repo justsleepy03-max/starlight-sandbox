@@ -153,6 +153,86 @@ class RPGActionView(discord.ui.View):
         await self.cog.execute_fish(interaction)
 
 
+class AreaSelect(discord.ui.Select):
+    def __init__(self, cog, user_id: str, current_area: int, unlocked_area: int):
+        self.cog = cog
+        self.user_id = user_id
+
+        options = []
+        for a_id in range(1, unlocked_area + 1):
+            b_name = AREA_BIOMES.get(a_id, {}).get("name", "Unknown")
+            req_lvl = AREA_LEVEL_REQUIREMENTS.get(a_id, 1)
+            is_current = a_id == current_area
+            options.append(
+                discord.SelectOption(
+                    label=f"Area {a_id}: {b_name}",
+                    value=str(a_id),
+                    description=f"Current location (Lv. {req_lvl}+)" if is_current else f"Travel to {b_name} (Lv. {req_lvl}+)",
+                    emoji="📍" if is_current else "🧭",
+                    default=is_current,
+                )
+            )
+
+        super().__init__(
+            placeholder="Select an unlocked area to travel to...",
+            min_values=1,
+            max_values=1,
+            options=options,
+            custom_id="area_travel_select",
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        if str(interaction.user.id) != self.user_id:
+            await interaction.response.send_message(
+                "❌ This travel menu doesn't belong to you! Use `/area` to open your own.",
+                ephemeral=True,
+            )
+            return
+
+        chosen_area = int(self.values[0])
+        p = get_player(self.user_id)
+        unlocked = self.cog._sync_unlocked_area(p)
+
+        if chosen_area > unlocked:
+            req_lvl = AREA_LEVEL_REQUIREMENTS.get(chosen_area, 1)
+            await interaction.response.send_message(
+                f"🔒 **Area {chosen_area}** is locked! Reach **Level {req_lvl}** first.",
+                ephemeral=True,
+            )
+            return
+
+        p["area"] = chosen_area
+        update_player(self.user_id, p)
+
+        embed = self.cog.build_area_embed(p, unlocked)
+        new_view = AreaTravelView(self.cog, self.user_id, chosen_area, unlocked)
+        biome_name = AREA_BIOMES.get(chosen_area, {}).get("name", "Unknown Biome")
+        unlock_info = AREA_UNLOCKS.get(chosen_area, "")
+        unlock_line = f"\n🔓 *Unlocks:* {unlock_info}" if unlock_info else ""
+
+        await interaction.response.edit_message(embed=embed, view=new_view)
+        await interaction.followup.send(
+            f"🧭 Traveled to **Area {chosen_area} — {biome_name}**!{unlock_line}",
+            ephemeral=True,
+        )
+
+
+class AreaTravelView(discord.ui.View):
+    def __init__(self, cog, user_id: str, current_area: int, unlocked_area: int):
+        super().__init__(timeout=180)
+        self.user_id = user_id
+        self.add_item(AreaSelect(cog, user_id, current_area, unlocked_area))
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if str(interaction.user.id) != self.user_id:
+            await interaction.response.send_message(
+                "❌ This travel menu doesn't belong to you! Use `/area` to open your own.",
+                ephemeral=True,
+            )
+            return False
+        return True
+
+
 class EconomyAmountModal(discord.ui.Modal):
     def __init__(self, cog, user_id: str, action: str, source_view: "EconomyView"):
         title = "Deposit Coins to Bank" if action == "deposit" else "Withdraw Coins to Wallet"
@@ -250,7 +330,7 @@ class HelpView(discord.ui.View):
         embed.add_field(
             name="Progression & Economy",
             value=(
-                "`/area` - View biomes/unlocks or travel to an unlocked area\n"
+                "`/area` - View biomes/unlocks or travel via dropdown menu\n"
                 "`/inventory` - Check items & materials\n"
                 "`/economy` - Balance, deposit & withdraw button hub\n"
                 "`/daily` - Claim daily coins\n"
@@ -295,6 +375,41 @@ class RpgCog(commands.Cog):
         name="hardmode",
         description="High-risk, high-reward hardmode hunts and adventures (Area 13+).",
     )
+
+    def _sync_unlocked_area(self, p: dict) -> int:
+        level = int(p.get("level", 1))
+        unlocked = int(p.get("unlocked_area", p.get("area", 1)))
+        eligible = 1
+        for area_id, req_level in AREA_LEVEL_REQUIREMENTS.items():
+            if level >= req_level:
+                eligible = area_id
+        if eligible > unlocked:
+            unlocked = eligible
+            p["unlocked_area"] = unlocked
+        return unlocked
+
+    def build_area_embed(self, p: dict, unlocked: int) -> discord.Embed:
+        current_area = int(p.get("area", 1))
+        current_biome = AREA_BIOMES.get(current_area, {}).get("name", "Unknown")
+        lines = []
+        for a_id in range(1, 16):
+            b_name = AREA_BIOMES.get(a_id, {}).get("name", "Unknown")
+            req_lvl = AREA_LEVEL_REQUIREMENTS.get(a_id, 1)
+            marker = "📍 " if a_id == current_area else ("✅ " if a_id <= unlocked else "🔒 ")
+            lines.append(f"{marker}**Area {a_id}:** {b_name} *(Lv. {req_lvl}+)*")
+
+        embed = discord.Embed(
+            title="🗺️ Biomes & Area Travel",
+            description="\n".join(lines),
+            color=discord.Color.green(),
+        )
+        embed.add_field(
+            name="Current Location",
+            value=f"Area {current_area} (**{current_biome}**) • Highest Unlocked: **Area {unlocked}**",
+            inline=False,
+        )
+        embed.set_footer(text="Select an unlocked biome from the dropdown menu below to travel!")
+        return embed
 
     def _update_quest_progress(self, p, action_type, amount=1):
         active = p.get("active_quest")
@@ -553,47 +668,19 @@ class RpgCog(commands.Cog):
         view = RPGActionView(self, uid)
         await interaction.response.send_message(embed=embed, view=view)
 
-    @discord.app_commands.command(name="area", description="View unlocked areas or travel to an unlocked biome (Areas 1–15).")
-    @app_commands.describe(area="Area number (1–15) to travel to")
+    @discord.app_commands.command(name="area", description="View unlocked areas or select a biome from the dropdown to travel.")
+    @app_commands.describe(area="Optional area number (1–15) to travel directly")
     async def area(self, interaction: discord.Interaction, area: int | None = None):
         uid = str(interaction.user.id)
         p = get_player(uid)
-
-        level = int(p.get("level", 1))
-        unlocked = int(p.get("unlocked_area", p.get("area", 1)))
-
-        eligible = 1
-        for area_id, req_level in AREA_LEVEL_REQUIREMENTS.items():
-            if level >= req_level:
-                eligible = area_id
-        if eligible > unlocked:
-            unlocked = eligible
-            p["unlocked_area"] = unlocked
-
+        unlocked = self._sync_unlocked_area(p)
         current_area = int(p.get("area", 1))
 
         if area is None:
-            current_biome = AREA_BIOMES.get(current_area, {}).get("name", "Unknown")
-            lines = []
-            for a_id in range(1, 16):
-                b_name = AREA_BIOMES.get(a_id, {}).get("name", "Unknown")
-                req_lvl = AREA_LEVEL_REQUIREMENTS.get(a_id, 1)
-                marker = "📍 " if a_id == current_area else ("✅ " if a_id <= unlocked else "🔒 ")
-                lines.append(f"{marker}**Area {a_id}:** {b_name} *(Lv. {req_lvl}+)*")
-
-            embed = discord.Embed(
-                title="🗺️ Biomes & Area Travel",
-                description="\n".join(lines),
-                color=discord.Color.green(),
-            )
-            embed.add_field(
-                name="Current Location",
-                value=f"Area {current_area} (**{current_biome}**) • Highest Unlocked: **Area {unlocked}**",
-                inline=False,
-            )
-            embed.set_footer(text="Use /area area:<number> to travel to an unlocked biome.")
             update_player(uid, p)
-            await interaction.response.send_message(embed=embed)
+            embed = self.build_area_embed(p, unlocked)
+            view = AreaTravelView(self, uid, current_area, unlocked)
+            await interaction.response.send_message(embed=embed, view=view)
             return
 
         if area < 1 or area > 15:
