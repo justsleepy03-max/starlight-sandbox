@@ -75,8 +75,8 @@ class DungeonCombatView(discord.ui.View):
         return True
 
     def build_combat_embed(self, player_data: dict, status_color=discord.Color.red()) -> discord.Embed:
-        p_hp = max(0, player_data.get("hp", 100))
         p_max_hp = player_data.get("max_hp", 100)
+        p_hp = max(0, player_data.get("hp", p_max_hp))
         potions = player_data.get("inventory", {}).get("life potion", 0)
         sword_tier = player_data.get("sword_tier", 1)
         armor_tier = player_data.get("armor_tier", 1)
@@ -113,7 +113,7 @@ class DungeonCombatView(discord.ui.View):
 
     def _calculate_enemy_damage(self, player_data: dict, guarding: bool = False) -> int:
         armor_tier = player_data.get("armor_tier", 1)
-        reduction = min(0.60, armor_tier * 0.05)  # Up to 50% reduction at Tier 10 armor
+        reduction = min(0.60, armor_tier * 0.05)  # Up to 60% reduction at Tier 12 armor
         raw_dmg = self.enemy_atk * random.uniform(0.80, 1.20)
         final_dmg = raw_dmg * (1.0 - reduction)
         if guarding:
@@ -121,19 +121,19 @@ class DungeonCombatView(discord.ui.View):
         return max(1, int(final_dmg))
 
     async def _handle_victory(self, interaction: discord.Interaction, player_data: dict):
-        # Scale rewards by floor
         coins_won = (120 * self.floor) + (1500 if self.is_boss else 0)
         xp_won = (85 * self.floor) + (1000 if self.is_boss else 0)
 
-        player_data["wallet"] += coins_won
-        player_data["xp"] += xp_won
+        player_data["wallet"] = player_data.get("wallet", 0) + coins_won
+        player_data["xp"] = player_data.get("xp", 0) + xp_won
+        player_data.setdefault("level", 1)
+        player_data.setdefault("max_hp", 100)
+        player_data.setdefault("hp", player_data["max_hp"])
 
-        # Advance highest cleared floor
         current_cleared = player_data.get("dungeon_floor", 0)
         if self.floor > current_cleared:
             player_data["dungeon_floor"] = min(100, self.floor)
 
-        # Pick loot from tier pool
         if self.floor <= 25:
             pool = LOOT_TABLES["tier_1"]
         elif self.floor <= 50:
@@ -146,13 +146,11 @@ class DungeonCombatView(discord.ui.View):
         inv = player_data.setdefault("inventory", {})
         loot_summary = []
 
-        # Primary material/item drop
         drop_1 = random.choice(pool)
         qty_1 = random.randint(2, 4) if self.is_boss else random.randint(1, 2)
         inv[drop_1] = inv.get(drop_1, 0) + qty_1
         loot_summary.append(f"**{qty_1}x {drop_1.title()}**")
 
-        # Bonus boss drop & signature milestone trophies
         if self.is_boss:
             bonus_drop = random.choice(LOOT_TABLES["tier_3"] if self.floor < 60 else LOOT_TABLES["tier_4"])
             inv[bonus_drop] = inv.get(bonus_drop, 0) + 1
@@ -164,7 +162,6 @@ class DungeonCombatView(discord.ui.View):
                 inv[trophy_item] = inv.get(trophy_item, 0) + 1
                 loot_summary.append(f"✨ **1x {trophy_item.title()} (Legendary Trophy)**")
 
-        # Level up check
         xp_needed = player_data["level"] * 250
         lvl_up_text = ""
         while player_data["xp"] >= xp_needed:
@@ -193,7 +190,6 @@ class DungeonCombatView(discord.ui.View):
         await interaction.response.edit_message(embed=embed, view=None)
 
     async def _handle_defeat(self, interaction: discord.Interaction, player_data: dict):
-        # Revive player at 25% HP outside the spire so they aren't soft-locked
         player_data["hp"] = max(25, int(player_data.get("max_hp", 100) * 0.25))
         update_player(self.user_id, player_data)
 
@@ -209,6 +205,9 @@ class DungeonCombatView(discord.ui.View):
     @discord.ui.button(label="⚔️ Strike", style=discord.ButtonStyle.danger)
     async def strike_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         player_data = get_player(self.user_id)
+        player_data.setdefault("max_hp", 100)
+        player_data.setdefault("hp", player_data["max_hp"])
+
         dmg, is_crit = self._calculate_player_damage(player_data)
         self.enemy_hp -= dmg
 
@@ -231,10 +230,14 @@ class DungeonCombatView(discord.ui.View):
     @discord.ui.button(label="🛡️ Guard", style=discord.ButtonStyle.primary)
     async def guard_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         player_data = get_player(self.user_id)
-        enemy_dmg = self._calculate_enemy_damage(player_data, guarding=True)
-        heal_amt = max(5, int(player_data.get("max_hp", 100) * 0.08))
+        max_hp = player_data.get("max_hp", 100)
+        cur_hp = player_data.get("hp", max_hp)
 
-        player_data["hp"] = min(player_data.get("max_hp", 100), player_data["hp"] - enemy_dmg + heal_amt)
+        enemy_dmg = self._calculate_enemy_damage(player_data, guarding=True)
+        heal_amt = max(5, int(max_hp * 0.08))
+
+        player_data["max_hp"] = max_hp
+        player_data["hp"] = min(max_hp, cur_hp - enemy_dmg + heal_amt)
         self.combat_log.append(f"🛡️ You raised your guard! Took **{enemy_dmg:,}** reduced damage and recovered **{heal_amt}** HP.")
 
         if player_data["hp"] <= 0:
@@ -246,7 +249,7 @@ class DungeonCombatView(discord.ui.View):
     @discord.ui.button(label="🧪 Life Potion", style=discord.ButtonStyle.success)
     async def potion_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         player_data = get_player(self.user_id)
-        inv = player_data.get("inventory", {})
+        inv = player_data.setdefault("inventory", {})
 
         if inv.get("life potion", 0) < 1:
             return await interaction.response.send_message("❌ You don't have any **Life Potions** in your bag! Buy some in `/shop`.", ephemeral=True)
@@ -256,8 +259,9 @@ class DungeonCombatView(discord.ui.View):
             del inv["life potion"]
 
         max_hp = player_data.get("max_hp", 100)
+        cur_hp = player_data.get("hp", max_hp)
         heal_amt = max(35, int(max_hp * 0.50))
-        player_data["hp"] = min(max_hp, player_data.get("hp", 100) + heal_amt)
+        player_data["hp"] = min(max_hp, cur_hp + heal_amt)
         update_player(self.user_id, player_data)
 
         self.combat_log.append(f"🧪 You drank a **Life Potion** and restored **{heal_amt:,} HP**!")
@@ -265,9 +269,6 @@ class DungeonCombatView(discord.ui.View):
 
     @discord.ui.button(label="🏃 Retreat", style=discord.ButtonStyle.secondary)
     async def retreat_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        player_data = get_player(self.user_id)
-        update_player(self.user_id, player_data)
-
         embed = discord.Embed(
             title=f"🏃 Retreated from Floor {self.floor}",
             description="You safely used a Teleport Crystal to exit the Starlight Spire.",
@@ -307,9 +308,8 @@ class DungeonsCog(commands.Cog):
 
         is_boss = (target_floor % 10 == 0)
 
-        # Every 10th floor requires 1 Dungeon Key
         if is_boss:
-            inv = player_data.get("inventory", {})
+            inv = player_data.setdefault("inventory", {})
             if inv.get("dungeon key", 0) < 1:
                 return await interaction.response.send_message(
                     f"🔑 **Floor {target_floor}** is a **Boss Room** and requires **1x Dungeon Key**! Buy one in `/shop` or earn them from quests.",
@@ -320,7 +320,6 @@ class DungeonsCog(commands.Cog):
                 del inv["dungeon key"]
             update_player(uid, player_data)
 
-        # Scale enemy stats smoothly from Floor 1 to Floor 100
         if is_boss:
             boss_info = BOSS_FLOORS.get(target_floor, {"name": f"Floor {target_floor} Overlord", "title": "Boss"})
             enemy_name = f"{boss_info['name']} ({boss_info['title']})"
