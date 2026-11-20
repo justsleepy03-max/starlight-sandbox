@@ -3,6 +3,7 @@ import os
 
 DATA_DIR = "/app/data"
 DATA_FILE = os.path.join(DATA_DIR, "rpg_data.json")
+TEMP_FILE = os.path.join(DATA_DIR, "rpg_data.json.tmp")
 
 DEFAULT_EQUIPMENT = {
     "sword": None,
@@ -16,17 +17,18 @@ def load_data():
     if not os.path.exists(DATA_FILE):
         return {}
     try:
-        with open(DATA_FILE, "r") as f:
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
             return data if isinstance(data, dict) else {}
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, OSError):
         return {}
 
 
 def save_data(data):
     os.makedirs(DATA_DIR, exist_ok=True)
-    with open(DATA_FILE, "w") as f:
+    with open(TEMP_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4)
+    os.replace(TEMP_FILE, DATA_FILE)
 
 
 def ensure_player_defaults(player):
@@ -40,8 +42,11 @@ def ensure_player_defaults(player):
     player.setdefault("level", 1)
     player.setdefault("xp", 0)
     player.setdefault("area", 1)
-    player.setdefault("inventory", {})
-    player.setdefault("cooldowns", {})
+
+    if not isinstance(player.get("inventory"), dict):
+        player["inventory"] = {}
+    if not isinstance(player.get("cooldowns"), dict):
+        player["cooldowns"] = {}
 
     if not isinstance(player.get("equipment"), dict):
         player["equipment"] = dict(DEFAULT_EQUIPMENT)
