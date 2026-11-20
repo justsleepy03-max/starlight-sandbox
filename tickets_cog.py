@@ -1,11 +1,11 @@
-import os
 import io
 import json
-import asyncio
+import os
+import re
 from datetime import datetime, timezone
 import discord
-from discord.ext import commands
 from discord import app_commands
+from discord.ext import commands
 
 DATA_DIR = "/app/data"
 TRANSCRIPTS_DIR = os.path.join(DATA_DIR, "transcripts")
@@ -16,20 +16,35 @@ def load_ticket_config():
     if not os.path.exists(CONFIG_FILE):
         return {}
     try:
-        with open(CONFIG_FILE, "r") as f:
-            return json.load(f)
-    except json.JSONDecodeError:
+        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return data if isinstance(data, dict) else {}
+    except (json.JSONDecodeError, OSError):
         return {}
 
 
 def save_ticket_config(data):
     os.makedirs(DATA_DIR, exist_ok=True)
-    with open(CONFIG_FILE, "w") as f:
+    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4)
 
 
-async def generate_and_send_transcript(channel: discord.TextChannel, closed_by: discord.Member, is_manual_save: bool = False):
+def _sanitize_channel_name(username: str, fallback_id: int) -> str:
+    cleaned = re.sub(r"[^a-z0-9_-]+", "-", username.lower()).strip("-_")
+    if not cleaned:
+        cleaned = f"user-{fallback_id}"
+    return f"ticket-{cleaned}"[:30].rstrip("-_") or f"ticket-{fallback_id}"
+
+
+async def generate_and_send_transcript(
+    channel: discord.TextChannel,
+    closed_by: discord.abc.User,
+    is_manual_save: bool = False,
+):
     """Compiles channel history into a .txt transcript, backs it up to disk, and posts to the log channel."""
+    if not isinstance(channel, discord.TextChannel) or channel.guild is None:
+        return
+
     os.makedirs(TRANSCRIPTS_DIR, exist_ok=True)
     now = datetime.now(timezone.utc)
     timestamp_str = now.strftime("%Y-%m-%d_%H-%M-%S")
@@ -77,31 +92,38 @@ async def generate_and_send_transcript(channel: discord.TextChannel, closed_by: 
     try:
         with open(filepath, "w", encoding="utf-8") as f:
             f.write(transcript_text)
-    except Exception as e:
+    except OSError as e:
         print(f"Warning: Could not write local transcript backup: {e}")
 
     guild = channel.guild
     config = load_ticket_config()
-    log_channel_id = config.get(str(guild.id), {}).get("log_channel_id")
-    log_channel = guild.get_channel(int(log_channel_id)) if log_channel_id else None
+    guild_cfg = config.get(str(guild.id), {})
+    log_channel_id = guild_cfg.get("log_channel_id")
+    log_channel = None
 
-    if not log_channel:
+    if log_channel_id is not None:
+        try:
+            log_channel = guild.get_channel(int(log_channel_id))
+        except (ValueError, TypeError):
+            log_channel = None
+
+    if not isinstance(log_channel, discord.TextChannel):
         log_channel = (
             discord.utils.get(guild.text_channels, name="ticket-logs")
             or discord.utils.get(guild.text_channels, name="transit-logs")
         )
 
-    if log_channel:
+    if isinstance(log_channel, discord.TextChannel):
         title_text = "📑 Manual Ticket Transcript Export" if is_manual_save else "🔒 Ticket Closed & Transit Log"
         embed = discord.Embed(
             title=title_text,
             color=discord.Color.from_str("#F1C40F"),
-            timestamp=now
+            timestamp=now,
         )
         embed.add_field(name="Ticket", value=f"`#{channel.name}`", inline=True)
         embed.add_field(name="Triggered By", value=closed_by.mention, inline=True)
         embed.add_field(name="Messages Logged", value=str(message_count), inline=True)
-        embed.add_field(name="Details", value=channel.topic or "No reason recorded", inline=False)
+        embed.add_field(name="Details", value=(channel.topic or "No reason recorded")[:1000], inline=False)
         embed.set_footer(text="Starlight Sandbox • Automated Transit Log")
 
         file_buffer = io.BytesIO(transcript_text.encode("utf-8"))
@@ -111,6 +133,8 @@ async def generate_and_send_transcript(channel: discord.TextChannel, closed_by: 
             await log_channel.send(embed=embed, file=discord_file)
         except discord.Forbidden:
             print(f"Missing permissions to send transcript in #{log_channel.name}")
+        except discord.HTTPException as e:
+            print(f"Failed to send transcript in #{log_channel.name}: {e}")
 
 
 # --- MODAL FOR MEMBER REASON INPUT ---
@@ -120,7 +144,7 @@ class TicketReasonModal(discord.ui.Modal, title="Open a Support Ticket"):
         style=discord.TextStyle.paragraph,
         placeholder="Describe your issue, report, or question...",
         required=True,
-        max_length=500
+        max_length=500,
     )
 
     async def on_submit(self, interaction: discord.Interaction):
@@ -128,8 +152,8 @@ class TicketReasonModal(discord.ui.Modal, title="Open a Support Ticket"):
             interaction=interaction,
             target_member=interaction.user,
             opened_by=interaction.user,
-            reason=self.reason.value,
-            staff_initiated=False
+            reason=self.reason.value.strip(),
+            staff_initiated=False,
         )
 
 
@@ -142,20 +166,26 @@ class CloseTicketView(discord.ui.View):
         label="Close Ticket",
         style=discord.ButtonStyle.danger,
         emoji="🔒",
-        custom_id="starlight:close_ticket"
+        custom_id="starlight:close_ticket",
     )
     async def close_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not isinstance(interaction.channel, discord.TextChannel):
+            await interaction.response.send_message("❌ This button can only be used inside a ticket channel.", ephemeral=True)
+            return
+
         for child in self.children:
             child.disabled = True
         await interaction.response.edit_message(view=self)
 
-        # Generate transcript and send to logs, but DO NOT delete the channel
         await generate_and_send_transcript(interaction.channel, interaction.user, is_manual_save=False)
-        
+
         embed = discord.Embed(
             title="🔒 Ticket Closed",
-            description=f"This ticket has been marked as closed by {interaction.user.mention}. The transcript has been archived to the logs channel. You may delete this channel whenever you are ready.",
-            color=discord.Color.from_str("#F1C40F")
+            description=(
+                f"This ticket has been marked as closed by {interaction.user.mention}. "
+                "The transcript has been archived to the logs channel. You may delete this channel whenever you are ready."
+            ),
+            color=discord.Color.from_str("#F1C40F"),
         )
         await interaction.followup.send(embed=embed)
 
@@ -163,12 +193,19 @@ class CloseTicketView(discord.ui.View):
         label="Transcript",
         style=discord.ButtonStyle.secondary,
         emoji="📜",
-        custom_id="starlight:manual_transcript"
+        custom_id="starlight:manual_transcript",
     )
     async def manual_transcript(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not isinstance(interaction.channel, discord.TextChannel):
+            await interaction.response.send_message("❌ This button can only be used inside a ticket channel.", ephemeral=True)
+            return
+
         await interaction.response.defer(thinking=True, ephemeral=True)
         await generate_and_send_transcript(interaction.channel, interaction.user, is_manual_save=True)
-        await interaction.followup.send("✅ A live transcript of this ticket has been exported and sent to the logs channel!", ephemeral=True)
+        await interaction.followup.send(
+            "✅ A live transcript of this ticket has been exported and sent to the logs channel!",
+            ephemeral=True,
+        )
 
 
 # --- PERSISTENT OPEN TICKET PANEL VIEW ---
@@ -180,22 +217,27 @@ class TicketPanelView(discord.ui.View):
         label="Open Support Ticket",
         style=discord.ButtonStyle.primary,
         emoji="🎟️",
-        custom_id="starlight:open_ticket"
+        custom_id="starlight:open_ticket",
     )
     async def open_ticket_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.guild is None:
+            await interaction.response.send_message("❌ Support tickets can only be opened inside a server.", ephemeral=True)
+            return
         await interaction.response.send_modal(TicketReasonModal())
 
 
 # --- SHARED CHANNEL CREATION HELPER ---
 async def create_ticket_channel(
     interaction: discord.Interaction,
-    target_member: discord.Member,
-    opened_by: discord.Member,
+    target_member: discord.abc.User,
+    opened_by: discord.abc.User,
     reason: str,
-    staff_initiated: bool
+    staff_initiated: bool,
 ):
     guild = interaction.guild
     if not guild:
+        if not interaction.response.is_done():
+            await interaction.response.send_message("❌ This command can only be used inside a server.", ephemeral=True)
         return
 
     category = discord.utils.get(guild.categories, name="Support Tickets")
@@ -204,44 +246,59 @@ async def create_ticket_channel(
 
     overwrites = {
         guild.default_role: discord.PermissionOverwrite(read_messages=False),
-        target_member: discord.PermissionOverwrite(read_messages=True, send_messages=True, attach_files=True, embed_links=True),
-        opened_by: discord.PermissionOverwrite(read_messages=True, send_messages=True, attach_files=True, embed_links=True),
-        guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True, manage_channels=True)
+        target_member: discord.PermissionOverwrite(
+            read_messages=True, send_messages=True, attach_files=True, embed_links=True
+        ),
+        opened_by: discord.PermissionOverwrite(
+            read_messages=True, send_messages=True, attach_files=True, embed_links=True
+        ),
+        guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True, manage_channels=True),
     }
 
     for role in guild.roles:
         if role.permissions.manage_messages or role.permissions.administrator:
             overwrites[role] = discord.PermissionOverwrite(read_messages=True, send_messages=True, attach_files=True)
 
-    channel_name = f"ticket-{target_member.name}".lower()[:30]
+    channel_name = _sanitize_channel_name(target_member.name, target_member.id)
+    safe_reason = reason if reason else "No reason provided"
+    topic_text = f"Support ticket for {target_member} | Reason: {safe_reason}"[:1024]
+
     ticket_channel = await guild.create_text_channel(
         name=channel_name,
         category=category,
         overwrites=overwrites,
-        topic=f"Support ticket for {target_member} | Reason: {reason}"
+        topic=topic_text,
     )
 
     if staff_initiated:
-        header_line = f"🎟️ **Private Support Ticket Opened by:** Staff Member ({opened_by.mention})\n**Member:** {target_member.mention}\n**Reason:** {reason}"
+        header_line = (
+            f"🎟️ **Private Support Ticket Opened by:** Staff Member ({opened_by.mention})\n"
+            f"**Member:** {target_member.mention}\n"
+            f"**Reason:** {safe_reason}"
+        )
     else:
-        header_line = f"🎟️ **Support Ticket Opened by:** {opened_by.mention}\n**Reason:** {reason}"
+        header_line = (
+            f"🎟️ **Support Ticket Opened by:** {opened_by.mention}\n"
+            f"**Reason:** {safe_reason}"
+        )
 
     embed = discord.Embed(
         title="Support Ticket",
         description=f"{header_line}\n\nThis is a secure, private channel between staff and the member. No DMs required!",
-        color=discord.Color.blurple()
+        color=discord.Color.blurple(),
     )
     embed.set_footer(text="Use the buttons below to export a transcript or close the ticket.")
 
+    mention_line = target_member.mention if opened_by == target_member else f"{target_member.mention} {opened_by.mention}"
     await ticket_channel.send(
-        content=f"{target_member.mention} {opened_by.mention if opened_by != target_member else ''}",
+        content=mention_line,
         embed=embed,
-        view=CloseTicketView()
+        view=CloseTicketView(),
     )
 
     await interaction.response.send_message(
         f"✅ Ticket created: {ticket_channel.mention}",
-        ephemeral=True
+        ephemeral=True,
     )
 
 
@@ -258,6 +315,10 @@ class TicketsCog(commands.Cog):
     @app_commands.describe(channel="The staff log channel for ticket transcripts")
     @app_commands.default_permissions(administrator=True)
     async def setticketlogs(self, interaction: discord.Interaction, channel: discord.TextChannel):
+        if interaction.guild is None:
+            await interaction.response.send_message("❌ This command can only be used inside a server.", ephemeral=True)
+            return
+
         config = load_ticket_config()
         guild_id = str(interaction.guild.id)
         config.setdefault(guild_id, {})["log_channel_id"] = channel.id
@@ -266,7 +327,7 @@ class TicketsCog(commands.Cog):
         embed = discord.Embed(
             title="✅ Ticket Transit Logs Configured",
             description=f"All closed ticket transcripts will now be archived and posted to {channel.mention}.",
-            color=discord.Color.from_str("#F1C40F")
+            color=discord.Color.from_str("#F1C40F"),
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
@@ -274,26 +335,33 @@ class TicketsCog(commands.Cog):
     @app_commands.describe(member="The member to open a private channel with", reason="Reason for opening the ticket")
     @app_commands.default_permissions(manage_messages=True)
     async def openticket(self, interaction: discord.Interaction, member: discord.Member, reason: str = "Staff outreach"):
+        if interaction.guild is None:
+            await interaction.response.send_message("❌ This command can only be used inside a server.", ephemeral=True)
+            return
         if member.bot:
             return await interaction.response.send_message("❌ You cannot open a ticket with a bot.", ephemeral=True)
         await create_ticket_channel(
             interaction=interaction,
             target_member=member,
             opened_by=interaction.user,
-            reason=reason,
-            staff_initiated=True
+            reason=reason.strip(),
+            staff_initiated=True,
         )
 
     @app_commands.command(name="ticketpanel", description="[Admin] Post the permanent member support ticket panel")
     @app_commands.default_permissions(administrator=True)
     async def ticketpanel(self, interaction: discord.Interaction):
+        if interaction.guild is None or not isinstance(interaction.channel, discord.TextChannel):
+            await interaction.response.send_message("❌ Please run this command inside a server text channel.", ephemeral=True)
+            return
+
         embed = discord.Embed(
             title="🎟️ RVG Support & Inquiries",
             description=(
                 "Need help from staff, want to report an issue, or have a private question?\n\n"
                 "Click the **Open Support Ticket** button below to spin up a private channel with the staff team—no DMs required!"
             ),
-            color=discord.Color.from_str("#F1C40F")
+            color=discord.Color.from_str("#F1C40F"),
         )
         await interaction.channel.send(embed=embed, view=TicketPanelView())
         await interaction.response.send_message("✅ Ticket panel posted!", ephemeral=True)
