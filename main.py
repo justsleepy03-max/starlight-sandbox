@@ -38,12 +38,23 @@ class StarlightBot(commands.Bot):
             await self.load_extension(ext)
 
         test_guild_id = 1570758404476244120
-        guild = discord.Object(id=test_guild_id)
+        rvg_guild_id = None  # Optional: Replace None with RVG's Server ID (digits only) for instant sync
 
         try:
-            self.tree.copy_global_to(guild=guild)
-            synced = await self.tree.sync(guild=guild)
-            print(f"Successfully synced {len(synced)} commands instantly to your server!")
+            # 1. Sync globally so RVG and all future servers get commands automatically
+            global_synced = await self.tree.sync()
+            print(f"Successfully synced {len(global_synced)} global commands!")
+
+            # 2. Instant guild sync for your test server (and RVG if ID is set)
+            guild_ids = [test_guild_id]
+            if rvg_guild_id:
+                guild_ids.append(rvg_guild_id)
+
+            for gid in guild_ids:
+                guild = discord.Object(id=gid)
+                self.tree.copy_global_to(guild=guild)
+                synced = await self.tree.sync(guild=guild)
+                print(f"Instantly synced {len(synced)} commands to server {gid}!")
         except Exception as e:
             print(f"Failed to sync tree: {e}")
 
