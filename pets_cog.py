@@ -31,9 +31,11 @@ def save_pets_data(data):
 
 # Incubation durations in seconds
 HATCH_TIMES = {
-    "Common Egg": 15 * 60,        # 15 minutes
-    "Golden Egg": 2 * 60 * 60,    # 2 hours
-    "Celestial Egg": 6 * 60 * 60  # 6 hours
+    "Common Egg": 15 * 60,            # 15 minutes
+    "Golden Egg": 2 * 60 * 60,        # 2 hours
+    "Celestial Egg": 6 * 60 * 60,     # 6 hours
+    "Void Egg": 4 * 60 * 60,          # 4 hours
+    "Transcendent Egg": 12 * 60 * 60  # 12 hours
 }
 
 # Expedition Durations and Rewards
@@ -69,6 +71,8 @@ PET_DATABASE = {
     "Tempest Drake": {"rarity": "Epic", "type": "Celestial Egg", "buff_desc": "-12% cooldown reduction, +8% coins & +5% XP", "buff_type": "cooldown_coin_xp", "value": (0.12, 0.08, 0.05)},
     "Aether Phoenix": {"rarity": "Mythic", "type": "Celestial Egg", "buff_desc": "-14% cooldown reduction, +5% crit & HP recovery boost", "buff_type": "cooldown_crit_heal", "value": (0.14, 0.05, 0.05)},
     "Singularity Kitsune": {"rarity": "Void", "type": "Celestial Egg", "buff_desc": "-15% cooldown reduction, +6% crit & +10% rare drop chance", "buff_type": "cooldown_crit_rare", "value": (0.15, 0.06, 0.10)},
+    "Abyssal Stalker": {"rarity": "Abyssal", "type": "Void Egg", "buff_desc": "-11% cooldown reduction, +12% rare drop chance & +10% expedition coins", "buff_type": "cooldown_abyssal", "value": (0.11, 0.12, 0.10)},
+    "Prime Seraph": {"rarity": "Transcendent", "type": "Transcendent Egg", "buff_desc": "-15% cooldown reduction, +20% coin payout, +10% XP & +10% crit chance", "buff_type": "cooldown_transcendent", "value": (0.15, 0.20, 0.10, 0.10)},
 }
 
 
@@ -80,7 +84,9 @@ class PetsCog(commands.Cog):
     @app_commands.choices(egg_type=[
         app_commands.Choice(name="Common Egg (15m)", value="Common Egg"),
         app_commands.Choice(name="Golden Egg (2h)", value="Golden Egg"),
-        app_commands.Choice(name="Celestial Egg (6h)", value="Celestial Egg")
+        app_commands.Choice(name="Celestial Egg (6h)", value="Celestial Egg"),
+        app_commands.Choice(name="Void Egg (4h)", value="Void Egg"),
+        app_commands.Choice(name="Transcendent Egg (12h)", value="Transcendent Egg")
     ])
     async def hatch(self, interaction: discord.Interaction, egg_type: str):
         user_id = str(interaction.user.id)
@@ -214,6 +220,18 @@ class PetsCog(commands.Cog):
                 hatched_pet_name = random.choice(["Nebula Dragon", "Starlight Celestial Spirit", "Aether Phoenix"])
             else:
                 hatched_pet_name = "Singularity Kitsune"
+
+        elif egg_type == "Void Egg":
+            if roll < 0.70:
+                hatched_pet_name = random.choice(["Abyssal Stalker", "Singularity Kitsune"])
+            else:
+                hatched_pet_name = random.choice(["Tempest Drake", "Aether Phoenix", "Nebula Dragon"])
+
+        elif egg_type == "Transcendent Egg":
+            if roll < 0.75:
+                hatched_pet_name = "Prime Seraph"
+            else:
+                hatched_pet_name = random.choice(["Abyssal Stalker", "Singularity Kitsune", "Starlight Celestial Spirit"])
         else:
             hatched_pet_name = random.choice(["Starlight Slime", "Pebble Crab", "Shadow Mouse", "Mossy Badger"])
 
@@ -270,158 +288,4 @@ class PetsCog(commands.Cog):
             "incubating": None,
             "expedition": None,
         })
-        inventory = user_data.get("inventory", [])
-        matching_pet = next((p for p in inventory if p["name"].lower() == pet_name.lower()), None)
-
-        if not matching_pet:
-            await interaction.response.send_message(f"❌ You don't own a pet named **{pet_name}** in your inventory.", ephemeral=True)
-            return
-
-        user_data["active_pet"] = matching_pet
-        save_pets_data(data)
-
-        await interaction.response.send_message(f"✅ Successfully equipped **{matching_pet['name']}**! Its passive buff is now active.")
-
-    @app_commands.command(name="expedition", description="Send your active pet out on a timed adventure for coins and loot!")
-    @app_commands.choices(expedition_type=[
-        app_commands.Choice(name="Short Patrol (30m)", value="Short Patrol"),
-        app_commands.Choice(name="Deep Forest Hunt (2h)", value="Deep Forest Hunt"),
-        app_commands.Choice(name="Celestial Void Raid (6h)", value="Celestial Void Raid")
-    ])
-    async def expedition(self, interaction: discord.Interaction, expedition_type: str):
-        user_id = str(interaction.user.id)
-        data = load_pets_data()
-
-        user_data = data.get(user_id, {})
-        active_pet = user_data.get("active_pet")
-        if not active_pet:
-            await interaction.response.send_message(
-                "❌ You must have an active pet equipped (`/equip`) before sending them on an expedition!",
-                ephemeral=True
-            )
-            return
-
-        if user_data.get("expedition"):
-            await interaction.response.send_message(
-                "❌ Your pet is already out on an expedition! Check status with `/expedition-status` or claim when ready.",
-                ephemeral=True
-            )
-            return
-
-        base_duration = EXPEDITION_TYPES[expedition_type]["duration"]
-
-        # Apply expedition speed passive buff (-5% duration)
-        if active_pet.get("name") == "Sunwing Finch":
-            base_duration = int(base_duration * 0.95)
-
-        finish_time = time.time() + base_duration
-        user_data["expedition"] = {
-            "type": expedition_type,
-            "finish_time": finish_time,
-            "pet_name": active_pet["name"]
-        }
-        save_pets_data(data)
-
-        embed = discord.Embed(
-            title="🗺️ Pet Expedition Started!",
-            description=f"**{active_pet['name']}** has set off on a **{expedition_type}**!",
-            color=discord.Color.green()
-        )
-        embed.add_field(name="Companion Buff Active", value=active_pet["buff"], inline=False)
-        embed.set_footer(text="Check back when the timer completes to claim your rewards!")
-        await interaction.response.send_message(embed=embed)
-
-    @app_commands.command(name="expedition-status", description="Check the progress of your pet's current expedition.")
-    async def expedition_status(self, interaction: discord.Interaction):
-        user_id = str(interaction.user.id)
-        data = load_pets_data()
-
-        user_data = data.get(user_id, {})
-        expedition = user_data.get("expedition")
-
-        embed = discord.Embed(title="🧭 Expedition Status", color=discord.Color.blurple())
-
-        if not expedition:
-            embed.description = "Your pet is resting at home. Use `/expedition` to send them on an adventure!"
-        else:
-            exp_type = expedition["type"]
-            pet_name = expedition["pet_name"]
-            remaining = int(expedition["finish_time"] - time.time())
-
-            if remaining <= 0:
-                embed.description = f"🎉 **{pet_name}** has returned from their **{exp_type}**!\nRun **`/claim-expedition`** to collect your loot!"
-                embed.color = discord.Color.green()
-            else:
-                mins, secs = divmod(remaining, 60)
-                hours, mins = divmod(mins, 60)
-                time_str = f"{hours}h {mins}m {secs}s" if hours > 0 else f"{mins}m {secs}s"
-                embed.description = f"🐾 **Pet:** {pet_name}\n🗺️ **Mission:** {exp_type}\n⏱️ **Time Remaining:** {time_str}"
-                embed.color = discord.Color.gold()
-
-        await interaction.response.send_message(embed=embed)
-
-    @app_commands.command(name="claim-expedition", description="Claim rewards from your completed pet expedition.")
-    async def claim_expedition(self, interaction: discord.Interaction):
-        user_id = str(interaction.user.id)
-        data = load_pets_data()
-
-        user_data = data.setdefault(user_id, {
-            "inventory": [],
-            "active_pet": None,
-            "incubating": None,
-            "expedition": None,
-        })
-        expedition = user_data.get("expedition")
-
-        if not expedition:
-            await interaction.response.send_message("❌ Your pet isn't currently on an expedition!", ephemeral=True)
-            return
-
-        remaining = int(expedition["finish_time"] - time.time())
-        if remaining > 0:
-            mins, secs = divmod(remaining, 60)
-            hours, mins = divmod(mins, 60)
-            time_str = f"{hours}h {mins}m {secs}s" if hours > 0 else f"{mins}m {secs}s"
-            await interaction.response.send_message(f"⏳ Your pet is still on their expedition! Return in **{time_str}**.", ephemeral=True)
-            return
-
-        exp_type = expedition["type"]
-        pet_name = expedition["pet_name"]
-        info = EXPEDITION_TYPES.get(exp_type, {"base_coins": 500})
-
-        coins_earned = info["base_coins"]
-
-        # Apply coin bonuses from active pet buffs
-        active_pet = user_data.get("active_pet")
-        if active_pet:
-            active_name = active_pet.get("name")
-            if active_name == "Glowtail Panther":
-                coins_earned = int(coins_earned * 1.08)
-            elif active_name == "Starlight Slime":
-                coins_earned = int(coins_earned * 1.02)
-            elif active_name == "Nebula Dragon":
-                coins_earned = int(coins_earned * 1.25)
-            elif active_name == "Sunbeam Fox":
-                coins_earned = int(coins_earned * 1.05)
-            elif active_name == "Tempest Drake":
-                coins_earned = int(coins_earned * 1.08)
-
-        player = get_player(user_id)
-        player["wallet"] = player.get("wallet", 0) + coins_earned
-        update_player(user_id, player)
-
-        # Clear expedition slot
-        user_data["expedition"] = None
-        save_pets_data(data)
-
-        embed = discord.Embed(
-            title="🎁 Expedition Successful!",
-            description=f"**{pet_name}** returned safely from the **{exp_type}** with fantastic loot!",
-            color=discord.Color.gold()
-        )
-        embed.add_field(name="💰 Coins Earned", value=f"🪙 {coins_earned:,} Coins (added to wallet)", inline=True)
-        await interaction.response.send_message(embed=embed)
-
-
-async def setup(bot):
-    await bot.add_cog(PetsCog(bot))
+        inventory = user_data.get("inventory
