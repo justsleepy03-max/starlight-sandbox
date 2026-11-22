@@ -2,7 +2,19 @@ import random
 import discord
 from discord import app_commands
 from discord.ext import commands
-from database import get_player, save_player
+import database
+from database import get_player
+
+
+def _persist_player(uid: str, player_data: dict):
+  if hasattr(database, "save_player"):
+    database.save_player(uid, player_data)
+  elif hasattr(database, "update_player"):
+    database.update_player(uid, player_data)
+  elif hasattr(database, "save_data"):
+    database.save_data()
+  elif hasattr(database, "save_db"):
+    database.save_db()
 
 
 LOOTBOX_TABLES = {
@@ -327,7 +339,7 @@ class InventoryCog(commands.Cog):
           inventory.get(existing_item_key, 0) + qty_won
       )
 
-    save_player(uid, player_data)
+    _persist_player(uid, player_data)
 
     reward_lines = [f"• 💰 **+{total_coins:,} Coins**"]
     for item_name, qty_won in gained_items.items():
