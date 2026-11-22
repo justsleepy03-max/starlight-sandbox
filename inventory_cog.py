@@ -1,7 +1,71 @@
+import random
 import discord
 from discord import app_commands
 from discord.ext import commands
-from database import get_player
+from database import get_player, save_player
+
+
+LOOTBOX_TABLES = {
+    "common lootbox": {
+        "coins": (150, 400),
+        "rolls": 2,
+        "pool": [
+            ("wood", 5, 15, 35),
+            ("ancient stone", 5, 15, 35),
+            ("fish", 3, 10, 25),
+            ("life potion", 1, 2, 20),
+            ("sweet nectar", 2, 5, 15),
+            ("common egg", 1, 1, 10),
+        ],
+    },
+    "uncommon lootbox": {
+        "coins": (450, 1100),
+        "rolls": 2,
+        "pool": [
+            ("wood", 12, 28, 30),
+            ("ancient stone", 12, 28, 30),
+            ("river pearl", 4, 12, 25),
+            ("sweet nectar", 5, 12, 25),
+            ("life potion", 2, 4, 20),
+            ("soft bark", 2, 6, 15),
+            ("common egg", 1, 1, 15),
+            ("uncommon egg", 1, 1, 8),
+        ],
+    },
+    "rare lootbox": {
+        "coins": (1200, 2800),
+        "rolls": 3,
+        "pool": [
+            ("river pearl", 10, 25, 30),
+            ("soft bark", 6, 15, 25),
+            ("sweet nectar", 10, 22, 25),
+            ("life potion", 3, 7, 20),
+            ("uncommon egg", 1, 1, 15),
+            ("rare egg", 1, 1, 8),
+        ],
+    },
+    "epic lootbox": {
+        "coins": (3000, 6500),
+        "rolls": 3,
+        "pool": [
+            ("river pearl", 20, 45, 30),
+            ("soft bark", 15, 30, 25),
+            ("life potion", 6, 12, 25),
+            ("rare egg", 1, 1, 15),
+            ("epic egg", 1, 1, 8),
+        ],
+    },
+    "legendary lootbox": {
+        "coins": (7500, 15000),
+        "rolls": 4,
+        "pool": [
+            ("river pearl", 40, 80, 30),
+            ("life potion", 10, 20, 25),
+            ("epic egg", 1, 1, 18),
+            ("golden egg", 1, 1, 10),
+        ],
+    },
+}
 
 
 class InventoryView(discord.ui.View):
@@ -169,6 +233,116 @@ class InventoryCog(commands.Cog):
     view = InventoryView(uid, player_data)
     embed = view.build_embed()
     await interaction.response.send_message(embed=embed, view=view)
+
+  async def lootbox_autocomplete(
+      self, interaction: discord.Interaction, current: str
+  ) -> list[app_commands.Choice[str]]:
+    uid = str(interaction.user.id)
+    player_data = get_player(uid)
+    inventory = player_data.get("inventory", {})
+
+    choices = []
+    for item_key, qty in inventory.items():
+      if qty > 0 and "lootbox" in item_key.lower():
+        if current.lower() in item_key.lower():
+          choices.append(
+              app_commands.Choice(
+                  name=f"{item_key.title()} (x{qty})", value=item_key
+              )
+          )
+    return choices[:25]
+
+  @app_commands.command(
+      name="open", description="Open a lootbox from your Starlight inventory."
+  )
+  @app_commands.describe(
+      lootbox="Select the lootbox you want to open",
+      amount="How many of this lootbox to open (default: 1)",
+  )
+  @app_commands.autocomplete(lootbox=lootbox_autocomplete)
+  async def open_lootbox(
+      self,
+      interaction: discord.Interaction,
+      lootbox: str,
+      amount: app_commands.Range[int, 1, 25] = 1,
+  ):
+    uid = str(interaction.user.id)
+    player_data = get_player(uid)
+    inventory = player_data.setdefault("inventory", {})
+
+    # Match item key case-insensitively in player's inventory
+    matched_key = next(
+        (k for k in inventory if k.lower() == lootbox.strip().lower()),
+        None,
+    )
+
+    if not matched_key or inventory.get(matched_key, 0) <= 0:
+      await interaction.response.send_message(
+          f"❌ You don't have any **{lootbox.title()}** in your `/bag`!",
+          ephemeral=True,
+      )
+      return
+
+    owned_qty = inventory[matched_key]
+    if amount > owned_qty:
+      await interaction.response.send_message(
+          f"❌ You only have **{owned_qty}x {matched_key.title()}**!",
+          ephemeral=True,
+      )
+      return
+
+    table_key = matched_key.lower()
+    table = LOOTBOX_TABLES.get(table_key, LOOTBOX_TABLES["common lootbox"])
+
+    # Deduct opened lootboxes
+    if owned_qty - amount <= 0:
+      del inventory[matched_key]
+    else:
+      inventory[matched_key] = owned_qty - amount
+
+    # Roll rewards
+    total_coins = 0
+    gained_items: dict[str, int] = {}
+
+    pool_items = [(i[0], i[1], i[2]) for i in table["pool"]]
+    pool_weights = [i[3] for i in table["pool"]]
+
+    for _ in range(amount):
+      total_coins += random.randint(*table["coins"])
+      chosen = random.choices(
+          pool_items, weights=pool_weights, k=table["rolls"]
+      )
+      for item_name, min_qty, max_qty in chosen:
+        qty_won = random.randint(min_qty, max_qty)
+        gained_items[item_name] = gained_items.get(item_name, 0) + qty_won
+
+    # Apply rewards to player_data
+    player_data["wallet"] = player_data.get("wallet", 0) + total_coins
+    for item_name, qty_won in gained_items.items():
+      existing_item_key = next(
+          (k for k in inventory if k.lower() == item_name.lower()),
+          item_name,
+      )
+      inventory[existing_item_key] = (
+          inventory.get(existing_item_key, 0) + qty_won
+      )
+
+    save_player(uid, player_data)
+
+    reward_lines = [f"• 💰 **+{total_coins:,} Coins**"]
+    for item_name, qty_won in gained_items.items():
+      reward_lines.append(f"• 📦 **+{qty_won:,}x {item_name.title()}**")
+
+    embed = discord.Embed(
+        title=f"🎁 Opened {amount}x {matched_key.title()}!",
+        description="\n".join(reward_lines),
+        color=0x00F0FF,
+    )
+    remaining = inventory.get(matched_key, 0)
+    embed.set_footer(
+        text=f"Remaining {matched_key.title()}: {remaining:,} • Check /bag"
+    )
+    await interaction.response.send_message(embed=embed)
 
 
 async def setup(bot):
