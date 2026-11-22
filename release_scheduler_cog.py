@@ -5,43 +5,41 @@ import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 
-DATA_DIR = "/app/data" if os.path.isdir("/app/data") else "."
+DATA_DIR = "/app/data"
 STATE_FILE = os.path.join(DATA_DIR, "scheduled_releases.json")
 DEFAULT_ANNOUNCE_CHANNEL_ID = 1573672717733859368
 
 SCHEDULED_UPDATES = [
     {
-        "id": "pets_update_10_roster_2026_12_04",
+        "id": "pets_update_part_1_2026_12_04",
         # Friday, Dec 4, 2026 at 10:00 AM GMT/UTC
         "release_at_utc": datetime(2026, 12, 4, 10, 0, tzinfo=timezone.utc),
         "channel_id": DEFAULT_ANNOUNCE_CHANNEL_ID,
-        "title": "🐾 Starlight Sandbox Update • 10 Pets Progression Lineup!",
+        "title": "🐾 Starlight Sandbox Update • Pets Expansion (Part 1)!",
         "description": (
-            "The 10-pet progression lineup is arriving for **Starlight Sandbox**! "
-            "Build your companions from starter helpers to endgame void pets using your "
-            "pet, egg, adventure, and high-tier progression loops—and share any balance "
-            "or bug reports via `/feedback`."
+            "Part 1 of the Pets Expansion is scheduled for **Friday, December"
+            " 4, 2026 at 10:00 AM GMT** in **Starlight Sandbox**! Hatch new"
+            " companions from Common and Golden Eggs, equip them for passive"
+            " buffs, and send them on expeditions—with **Part 2** arriving for"
+            " Christmas. Share any balance or bug reports via `/feedback`."
         ),
         "fields": [
             {
-                "name": "✨ Early & Mid Companions (CD Reduction + Perks)",
+                "name": "🥚 New Common Egg Companions (Part 1)",
                 "value": (
-                    "• **Shadow Mouse** (`-1%` CD)\n"
-                    "• **Mossy Badger** (`-3%` CD, `+5%` gathering yield)\n"
-                    "• **Tidepool Crab** (`-4%` CD, `+8%` fish/pearl drop chance)\n"
-                    "• **Sunbeam Fox** (`-6%` CD, `+5%` coin payout)\n"
-                    "• **Glimmer Owl** (`-7%` CD, `+5%` XP gain)"
+                    "• **Mossy Badger** *(Common)* — `-3%` cooldown reduction,"
+                    " `+5%` gathering yield\n• **Tidepool Crab** *(Uncommon)* —"
+                    " `-4%` cooldown reduction, `+8%` fish/pearl drop chance"
                 ),
                 "inline": False,
             },
             {
-                "name": "🌟 Upper, Mythic & Void Companions",
+                "name": "✨ New Golden Egg Companions (Part 1)",
                 "value": (
-                    "• **Cinder Lynx** (`-9%` CD, `+3%` crit chance)\n"
-                    "• **Starlight Celestial Spirit** (`-10%` CD)\n"
-                    "• **Tempest Drake** (`-12%` CD, `+8%` coins & `+5%` XP)\n"
-                    "• **Aether Phoenix** (`-14%` CD, `+5%` crit & HP recovery boost)\n"
-                    "• **Singularity Kitsune** (`-15%` CD, `+6%` crit & `+10%` rare drop chance)"
+                    "• **Sunbeam Fox** *(Uncommon)* — `-6%` cooldown reduction,"
+                    " `+5%` coin payout\n• **Glimmer Owl** *(Rare)* — `-7%`"
+                    " cooldown reduction, `+5%` XP gain\n• **Cinder Lynx**"
+                    " *(Rare)* — `-9%` cooldown reduction, `+3%` crit chance"
                 ),
                 "inline": False,
             },
@@ -63,7 +61,7 @@ def _load_posted_ids() -> set[str]:
 
 
 def _save_posted_ids(posted_ids: set[str]) -> None:
-  os.makedirs(os.path.dirname(STATE_FILE) or ".", exist_ok=True)
+  os.makedirs(DATA_DIR, exist_ok=True)
   with open(STATE_FILE, "w", encoding="utf-8") as f:
     json.dump({"posted": sorted(posted_ids)}, f, indent=2)
 
@@ -82,7 +80,10 @@ def build_release_embed(entry: dict) -> discord.Embed:
         inline=field.get("inline", False),
     )
   embed.set_footer(
-      text="Rebel Vibez Gaming • Starlight Sandbox • Use /feedback for reports"
+      text=(
+          "Rebel Vibez Gaming • Starlight Sandbox • Part 2 Coming Christmas •"
+          " /feedback"
+      )
   )
   return embed
 
@@ -145,7 +146,10 @@ class ReleaseSchedulerCog(commands.Cog):
 
   @app_commands.command(
       name="releases",
-      description="Owner only: View scheduled and posted Starlight Sandbox update announcements.",
+      description=(
+          "Owner only: View scheduled and posted Starlight Sandbox update"
+          " announcements."
+      ),
   )
   async def releases(self, interaction: discord.Interaction):
     if not await self.bot.is_owner(interaction.user):
