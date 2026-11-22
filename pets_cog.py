@@ -355,4 +355,85 @@ class PetsCog(commands.Cog):
     if remaining > 0:
       mins, secs = divmod(remaining, 60)
       hours, mins = divmod(mins, 60)
-      time_str
+      time_str = (
+          f"{hours}h {mins}m {secs}s" if hours > 0 else f"{mins}m {secs}s"
+      )
+      await interaction.response.send_message(
+          f"⏳ Your egg is still hatching! Come back in **{time_str}** or"
+          " check `/incubator`.",
+          ephemeral=True,
+      )
+      return
+
+    egg_type = incubating["egg_type"]
+    roll = random.random()
+
+    if egg_type == "Common Egg":
+      if roll < 0.70:
+        hatched_pet_name = random.choice(
+            ["Starlight Slime", "Pebble Crab", "Shadow Mouse", "Mossy Badger"]
+        )
+      elif roll < 0.92:
+        hatched_pet_name = random.choice([
+            "Sunwing Finch",
+            "Crystal Hedgehog",
+            "Tidepool Crab",
+            "Sunbeam Fox",
+        ])
+      else:
+        hatched_pet_name = random.choice(
+            ["Ember Fox", "Glowtail Panther", "Glimmer Owl", "Cinder Lynx"]
+        )
+
+    elif egg_type == "Golden Egg":
+      if roll < 0.55:
+        hatched_pet_name = random.choice([
+            "Sunwing Finch",
+            "Crystal Hedgehog",
+            "Tidepool Crab",
+            "Sunbeam Fox",
+        ])
+      elif roll < 0.88:
+        hatched_pet_name = random.choice(
+            ["Ember Fox", "Glowtail Panther", "Glimmer Owl", "Cinder Lynx"]
+        )
+      else:
+        hatched_pet_name = random.choice(
+            ["Astral Phoenix", "Void Turtle", "Tempest Drake"]
+        )
+
+    elif egg_type == "Celestial Egg":
+      if roll < 0.65:
+        hatched_pet_name = random.choice(
+            ["Astral Phoenix", "Void Turtle", "Tempest Drake"]
+        )
+      elif roll < 0.92:
+        hatched_pet_name = random.choice(
+            ["Nebula Dragon", "Starlight Celestial Spirit", "Aether Phoenix"]
+        )
+      else:
+        hatched_pet_name = "Singularity Kitsune"
+
+    elif egg_type == "Void Egg":
+      if roll < 0.70:
+        hatched_pet_name = random.choice(
+            ["Abyssal Stalker", "Singularity Kitsune"]
+        )
+      else:
+        hatched_pet_name = random.choice(
+            ["Tempest Drake", "Aether Phoenix", "Nebula Dragon"]
+        )
+
+    elif egg_type == "Transcendent Egg":
+      if roll < 0.75:
+        hatched_pet_name = "Prime Seraph"
+      else:
+        hatched_pet_name = random.choice(
+            ["Abyssal Stalker", "Singularity Kitsune", "Starlight Celestial Spirit"]
+        )
+    else:
+      hatched_pet_name = random.choice(
+          ["Starlight Slime", "Pebble Crab", "Shadow Mouse", "Mossy Badger"]
+      )
+
+    pet_info = PET_
