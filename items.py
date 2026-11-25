@@ -101,3 +101,29 @@ PLUSHIES = {
     "ancient dragon plushie": {"price": 250000, "desc": "Stuffed with real fire-resistant fluff."},
     "golden starlight plushie": {"price": 1000000, "desc": "Pure flexing rights. Limited sandbox edition."}
 }
+
+
+def get_sword_info(tier_or_name) -> tuple[int, dict] | None:
+    if isinstance(tier_or_name, int):
+        return (tier_or_name, SWORDS[tier_or_name]) if tier_or_name in SWORDS else None
+    cleaned = str(tier_or_name).strip().lower()
+    if cleaned.isdigit():
+        tier = int(cleaned)
+        return (tier, SWORDS[tier]) if tier in SWORDS else None
+    for tier, data in SWORDS.items():
+        if data["name"].lower() == cleaned:
+            return tier, data
+    return None
+
+
+def get_armor_info(tier_or_name) -> tuple[int, dict] | None:
+    if isinstance(tier_or_name, int):
+        return (tier_or_name, ARMORS[tier_or_name]) if tier_or_name in ARMORS else None
+    cleaned = str(tier_or_name).strip().lower()
+    if cleaned.isdigit():
+        tier = int(cleaned)
+        return (tier, ARMORS[tier]) if tier in ARMORS else None
+    for tier, data in ARMORS.items():
+        if data["name"].lower() == cleaned:
+            return tier, data
+    return None
