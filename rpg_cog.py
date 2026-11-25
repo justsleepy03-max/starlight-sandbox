@@ -49,6 +49,7 @@ BETA_BUNDLE_ITEMS = {
     "crystal shard": 10,
 }
 
+
 def load_pets_data():
     if not os.path.exists(PETS_FILE):
         return {}
@@ -57,6 +58,7 @@ def load_pets_data():
             return json.load(f)
     except json.JSONDecodeError:
         return {}
+
 
 def get_cooldown_multiplier(user_id):
     """Checks user's active pet and returns cooldown multiplier (e.g. 0.90 for -10%)."""
@@ -74,6 +76,7 @@ def get_cooldown_multiplier(user_id):
         return 0.99  # -1% cooldown
 
     return 1.0
+
 
 QUEST_POOL = [
     {"id": "hunt_monsters", "title": "Monster Slayer", "desc": "Hunt 5 times in the wild", "target": 5, "type": "hunt", "reward_coins": 500, "reward_xp": 500, "min_area": 1},
@@ -98,7 +101,7 @@ AREA_BIOMES = {
     12: {"name": "Celestial Sanctuary", "drop": "starlight essence"},
     13: {"name": "Abyssal Depths", "drop": "void matter"},
     14: {"name": "Mythic Overgrowth", "drop": "world-tree sap"},
-    15: {"name": "The Transcendence Core", "drop": "singularity core"}
+    15: {"name": "The Transcendence Core", "drop": "singularity core"},
 }
 
 AREA_UNLOCKS = {
@@ -116,12 +119,13 @@ AREA_UNLOCKS = {
     12: "/dynamite, /pets, /petadventure, /ultraining, /badge",
     13: "/transmute, /hardmode hunt",
     14: "/hardmode adventure, /big dice",
-    15: "/time jump, /transcend"
+    15: "/time jump, /transcend",
 }
 
 AREA_LEVEL_REQUIREMENTS = {
-    1: 1, 2: 3, 3: 6, 4: 9, 5: 12, 6: 15, 7: 18, 8: 21, 9: 24, 10: 27, 11: 30, 12: 33, 13: 36, 14: 39, 15: 42
+    1: 1, 2: 3, 3: 6, 4: 9, 5: 12, 6: 15, 7: 18, 8: 21, 9: 24, 10: 27, 11: 30, 12: 33, 13: 36, 14: 39, 15: 42,
 }
+
 
 # --- INTERACTIVE VIEWS & MODALS ---
 class GearSelect(discord.ui.Select):
@@ -140,11 +144,12 @@ class GearSelect(discord.ui.Select):
                 else f"DEF {data.get('def', 0)}"
             )
             is_equipped = tier == current_tier
+            desc = f"Equipped • {stat_label}" if is_equipped else stat_label
             options.append(
                 discord.SelectOption(
                     label=f"T{tier}: {name}"[:100],
                     value=str(tier),
-                    description=(f"Equipped • {stat_label}" if is_equipped else stat_label)[:100],
+                    description=desc[:100],
                     emoji="✅" if is_equipped else ("⚔️" if slot == "weapon" else "🛡️"),
                     default=is_equipped,
                 )
@@ -187,7 +192,8 @@ class GearSelect(discord.ui.Select):
             p["sword_origin"] = origin
             update_player(self.user_id, p)
             perk = " (+15% Hunt Coins)" if origin == "crafted" else ""
-            msg = f"⚔️ Equipped **Tier {chosen_tier}: {data['name'].title()}** `[{origin.upper()}]`{perk}!"
+            item_title = data["name"].title()
+            msg = f"⚔️ Equipped **Tier {chosen_tier}: {item_title}** `[{origin.upper()}]`{perk}!"
         else:
             data = ARMORS.get(chosen_tier)
             if not data:
@@ -198,7 +204,8 @@ class GearSelect(discord.ui.Select):
             p["armor_origin"] = origin
             update_player(self.user_id, p)
             perk = " (+25% Gathering Yield)" if origin == "crafted" else ""
-            msg = f"🛡️ Equipped **Tier {chosen_tier}: {data['name'].title()}** `[{origin.upper()}]`{perk}!"
+            item_title = data["name"].title()
+            msg = f"🛡️ Equipped **Tier {chosen_tier}: {item_title}** `[{origin.upper()}]`{perk}!"
 
         await interaction.response.edit_message(content=msg, view=None)
 
@@ -227,7 +234,10 @@ class RPGActionView(discord.ui.View):
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if str(interaction.user.id) != self.user_id:
-            await interaction.response.send_message("❌ This action menu doesn't belong to you! Use `/profile` to open your own.", ephemeral=True)
+            await interaction.response.send_message(
+                "❌ This action menu doesn't belong to you! Use `/profile` to open your own.",
+                ephemeral=True,
+            )
             return False
         return True
 
@@ -575,15 +585,15 @@ class RpgCog(commands.Cog):
         sword_origin = p.get("sword_origin", "shop")
         armor_origin = p.get("armor_origin", "shop")
 
-        coin_mult = 1.15 if sword_origin == "crafted" else 1.0     # Crafted swords give +15% hunt coins
-        gathering_mult = 1.25 if armor_origin == "crafted" else 1.0 # Crafted armor gives +25% gathering yield
+        coin_mult = 1.15 if sword_origin == "crafted" else 1.0
+        gathering_mult = 1.25 if armor_origin == "crafted" else 1.0
 
         return coin_mult, gathering_mult
 
     def _calculate_enemy_damage(self, p, encounter_type="mob"):
         """50% chance to deal damage; scales with area and reduces via equipped armor defense."""
         if random.random() >= 0.50:
-            return 0  # 50% chance the enemy misses / player evades
+            return 0
 
         area = p.get("area", 1)
         armor_tier = p.get("armor_tier", 1)
@@ -695,7 +705,7 @@ class RpgCog(commands.Cog):
 
     @discord.app_commands.command(
         name="givebundle",
-        description="Owner only: Give a custom beta tester bundle with coins and items."
+        description="Owner only: Give a custom beta tester bundle with coins and items.",
     )
     @app_commands.default_permissions(administrator=True)
     @app_commands.describe(
@@ -756,9 +766,9 @@ class RpgCog(commands.Cog):
     async def help(self, interaction: discord.Interaction):
         uid = str(interaction.user.id)
         embed = discord.Embed(
-            title="🌟 Starlight Sandbox - Help Hub",  
-            description="Select a category using the buttons below to explore the core RPG loop, area-locked expansion commands, and party games!",  
-            color=discord.Color.blurple()
+            title="🌟 Starlight Sandbox - Help Hub",
+            description="Select a category using the buttons below to explore the core RPG loop, area-locked expansion commands, and party games!",
+            color=discord.Color.blurple(),
         )
         embed.set_footer(text="Starlight Community Bot • Button Navigation")
         view = HelpView(self, uid)
@@ -869,7 +879,7 @@ class RpgCog(commands.Cog):
             if chosen not in HEALING_ITEMS:
                 await interaction.response.send_message(
                     "❌ That isn't a valid healing item! Check `/shop` Page 2 for available HP bottles, elixirs, and flasks.",
-                    ephemeral=True
+                    ephemeral=True,
                 )
                 return
         else:
@@ -877,7 +887,7 @@ class RpgCog(commands.Cog):
             if not chosen:
                 await interaction.response.send_message(
                     "❌ You don't have any healing bottles or elixirs in your inventory! Grab some from `/shop`.",
-                    ephemeral=True
+                    ephemeral=True,
                 )
                 return
 
@@ -885,7 +895,7 @@ class RpgCog(commands.Cog):
         if owned < quantity:
             await interaction.response.send_message(
                 f"❌ You only have **{owned}x {chosen.title()}** in your inventory!",
-                ephemeral=True
+                ephemeral=True,
             )
             return
 
@@ -950,7 +960,7 @@ class RpgCog(commands.Cog):
         low_hp_tip = "\n⚠️ *Low HP! Use `/heal` to patch yourself up.*" if p["hp"] <= max(10, int(p["max_hp"] * 0.25)) else ""
         await interaction.response.send_message(
             f"⚔️ **Hunt in {biome_name}**: +🪙 {earned_coins:,}{crafted_tag} | +⭐ {earned_xp:,} XP | +{drop_qty}x {biome_drop.title()}{hp_msg}{level_msg}{low_hp_tip}",
-            ephemeral=False
+            ephemeral=False,
         )
 
     @discord.app_commands.command(name="adventure", description="Embark on an epic adventure in your current biome.")
@@ -969,4 +979,214 @@ class RpgCog(commands.Cog):
         coin_mult, _ = self._get_gear_multipliers(p)
         sword_bonus = p.get("sword_tier", 1) * 20
         earned_coins = int(((random.randint(80, 180) + sword_bonus) * area) * coin_mult)
-        earned_xp = random
+        earned_xp = random.randint(60, 130) * area
+        drop_qty = random.randint(3, 7) * area
+
+        p["wallet"] = p.get("wallet", 0) + earned_coins
+        p["xp"] = p.get("xp", 0) + earned_xp
+        inv[biome_drop] = inv.get(biome_drop, 0) + drop_qty
+
+        self._update_quest_progress(p, "adventure", 1)
+        self._advance_biome_quest(p, "adventure", 1)
+        level_msg = self._check_level_up(p)
+        update_player(uid, p)
+
+        await interaction.response.send_message(
+            f"🗺️ **Adventure in {biome_name}**: +🪙 {earned_coins:,} | +⭐ {earned_xp:,} XP | +{drop_qty}x {biome_drop.title()}{level_msg}",
+            ephemeral=False,
+        )
+
+    # --- GATHERING COMMANDS & PROFILE BUTTON HANDLERS ---
+    async def execute_chop(self, interaction: discord.Interaction):
+        uid = str(interaction.user.id)
+        p = get_player(uid)
+        inv = p.setdefault("inventory", {})
+        area = p.get("area", 1)
+        biome = AREA_BIOMES.get(area, {})
+        biome_name = biome.get("name", "Unknown Biome")
+        biome_drop = biome.get("drop", "soft bark")
+
+        _, gather_mult = self._get_gear_multipliers(p)
+        wood_qty = max(1, int(random.randint(3, 6) * area * gather_mult))
+        bonus_qty = max(1, int(random.randint(1, 2) * gather_mult))
+        earned_xp = random.randint(10, 22) * area
+
+        inv["wood"] = inv.get("wood", 0) + wood_qty
+        inv[biome_drop] = inv.get(biome_drop, 0) + bonus_qty
+        p["xp"] = p.get("xp", 0) + earned_xp
+
+        self._update_quest_progress(p, "chop", wood_qty)
+        self._advance_biome_quest(p, "chop", wood_qty)
+        level_msg = self._check_level_up(p)
+        update_player(uid, p)
+
+        crafted_tag = " (✨ Crafted Armor Bonus!)" if p.get("armor_origin") == "crafted" else ""
+        await interaction.response.send_message(
+            f"🪓 **Chopped in {biome_name}**: +{wood_qty}x Wood | +{bonus_qty}x {biome_drop.title()}{crafted_tag} | +⭐ {earned_xp:,} XP{level_msg}",
+            ephemeral=False,
+        )
+
+    async def execute_fish(self, interaction: discord.Interaction):
+        uid = str(interaction.user.id)
+        p = get_player(uid)
+        inv = p.setdefault("inventory", {})
+        area = p.get("area", 1)
+        biome = AREA_BIOMES.get(area, {})
+        biome_name = biome.get("name", "Unknown Biome")
+        biome_drop = biome.get("drop", "river pearl")
+
+        _, gather_mult = self._get_gear_multipliers(p)
+        fish_qty = max(1, int(random.randint(2, 5) * area * gather_mult))
+        bonus_qty = max(1, int(random.randint(1, 2) * gather_mult))
+        earned_xp = random.randint(10, 22) * area
+
+        inv["fish"] = inv.get("fish", 0) + fish_qty
+        inv[biome_drop] = inv.get(biome_drop, 0) + bonus_qty
+        p["xp"] = p.get("xp", 0) + earned_xp
+
+        self._update_quest_progress(p, "fish", fish_qty)
+        self._advance_biome_quest(p, "fish", fish_qty)
+        level_msg = self._check_level_up(p)
+        update_player(uid, p)
+
+        crafted_tag = " (✨ Crafted Armor Bonus!)" if p.get("armor_origin") == "crafted" else ""
+        await interaction.response.send_message(
+            f"🎣 **Fished in {biome_name}**: +{fish_qty}x Fish | +{bonus_qty}x {biome_drop.title()}{crafted_tag} | +⭐ {earned_xp:,} XP{level_msg}",
+            ephemeral=False,
+        )
+
+    async def execute_mine(self, interaction: discord.Interaction):
+        uid = str(interaction.user.id)
+        p = get_player(uid)
+        area = p.get("area", 1)
+        if area < 5:
+            await interaction.response.send_message(
+                "❌ Mining unlocks in **Area 5 (Crystal Caverns)** or higher!",
+                ephemeral=True,
+            )
+            return
+
+        inv = p.setdefault("inventory", {})
+        biome = AREA_BIOMES.get(area, {})
+        biome_name = biome.get("name", "Unknown Biome")
+        biome_drop = biome.get("drop", "crystal shard")
+
+        _, gather_mult = self._get_gear_multipliers(p)
+        ore_qty = max(1, int(random.randint(2, 5) * area * gather_mult))
+        bonus_qty = max(1, int(random.randint(1, 2) * gather_mult))
+        earned_xp = random.randint(14, 28) * area
+
+        inv["iron ore"] = inv.get("iron ore", 0) + ore_qty
+        inv[biome_drop] = inv.get(biome_drop, 0) + bonus_qty
+        p["xp"] = p.get("xp", 0) + earned_xp
+
+        self._update_quest_progress(p, "mine", ore_qty)
+        self._advance_biome_quest(p, "mine", ore_qty)
+        level_msg = self._check_level_up(p)
+        update_player(uid, p)
+
+        crafted_tag = " (✨ Crafted Armor Bonus!)" if p.get("armor_origin") == "crafted" else ""
+        await interaction.response.send_message(
+            f"⛏️ **Mined in {biome_name}**: +{ore_qty}x Iron Ore | +{bonus_qty}x {biome_drop.title()}{crafted_tag} | +⭐ {earned_xp:,} XP{level_msg}",
+            ephemeral=False,
+        )
+
+    @gather_group.command(name="wood", description="Chop wood in your current biome.")
+    async def gather_wood(self, interaction: discord.Interaction):
+        await self.execute_chop(interaction)
+
+    @gather_group.command(name="fish", description="Catch fish in your current biome.")
+    async def gather_fish(self, interaction: discord.Interaction):
+        await self.execute_fish(interaction)
+
+    @gather_group.command(name="mine", description="Mine iron ore and gems in your current biome (Requires Area 5+).")
+    async def gather_mine(self, interaction: discord.Interaction):
+        await self.execute_mine(interaction)
+
+    @hardmode_group.command(name="hunt", description="Hunt hardmode monsters in your current biome (Requires Area 13+).")
+    async def hardmode_hunt(self, interaction: discord.Interaction):
+        uid = str(interaction.user.id)
+        p = get_player(uid)
+        area = p.get("area", 1)
+        if area < 13:
+            await interaction.response.send_message(
+                "❌ Hardmode Hunt requires you to be in **Area 13 (Abyssal Depths)** or higher!",
+                ephemeral=True,
+            )
+            return
+
+        biome = AREA_BIOMES.get(area, {})
+        biome_drop = biome.get("drop", "common material")
+
+        coin_mult, _ = self._get_gear_multipliers(p)
+        sword_bonus = p.get("sword_tier", 1) * 16
+        earned_coins = int(((random.randint(45, 95) + sword_bonus) * area) * 1.5 * coin_mult)
+        earned_xp = int(random.randint(35, 65) * area * 1.5)
+        drop_qty = max(1, int(random.randint(2, 5) * area * 1.5))
+
+        p["wallet"] = p.get("wallet", 0) + earned_coins
+        p["xp"] = p.get("xp", 0) + earned_xp
+        inv = p.setdefault("inventory", {})
+        inv[biome_drop] = inv.get(biome_drop, 0) + drop_qty
+
+        dmg_taken = self._calculate_enemy_damage(p, encounter_type="miniboss")
+        max_hp = p.get("max_hp", 100)
+        cur_hp = p.get("hp", max_hp)
+        if dmg_taken > 0:
+            p["hp"] = max(0, cur_hp - dmg_taken)
+            hp_msg = f" | 💔 Took **{dmg_taken}** DMG ({p['hp']}/{max_hp} HP)"
+        else:
+            hp_msg = f" | 🛡️ Dodged! ({cur_hp}/{max_hp} HP)"
+
+        self._update_quest_progress(p, "hunt", 1)
+        self._advance_biome_quest(p, "hunt", 1)
+        level_msg = self._check_level_up(p)
+        update_player(uid, p)
+
+        crafted_tag = " (✨ Crafted Bonus!)" if p.get("sword_origin") == "crafted" else ""
+        low_hp_tip = "\n⚠️ *Low HP! Use `/heal` to patch yourself up.*" if p["hp"] <= max(10, int(p["max_hp"] * 0.25)) else ""
+        await interaction.response.send_message(
+            f"🔥 **Hardmode Hunt in {biome.get('name', 'Unknown Biome')}**: +🪙 {earned_coins:,}{crafted_tag} | +⭐ {earned_xp:,} XP | +{drop_qty}x {biome_drop.title()}{hp_msg}{level_msg}{low_hp_tip}",
+            ephemeral=False,
+        )
+
+    @hardmode_group.command(name="adventure", description="Embark on a hardmode adventure in your current biome (Requires Area 14+).")
+    async def hardmode_adventure(self, interaction: discord.Interaction):
+        uid = str(interaction.user.id)
+        p = get_player(uid)
+        area = p.get("area", 1)
+        if area < 14:
+            await interaction.response.send_message(
+                "❌ Hardmode Adventure requires you to be in **Area 14 (Mythic Overgrowth)** or higher!",
+                ephemeral=True,
+            )
+            return
+
+        biome = AREA_BIOMES.get(area, {})
+        biome_drop = biome.get("drop", "common material")
+
+        coin_mult, _ = self._get_gear_multipliers(p)
+        sword_bonus = p.get("sword_tier", 1) * 40
+        earned_coins = int(((random.randint(160, 340) + sword_bonus) * area) * 1.5 * coin_mult)
+        earned_xp = int(random.randint(120, 240) * area * 1.5)
+        drop_qty = max(1, int(random.randint(5, 11) * area * 1.5))
+
+        p["wallet"] = p.get("wallet", 0) + earned_coins
+        p["xp"] = p.get("xp", 0) + earned_xp
+        inv = p.setdefault("inventory", {})
+        inv[biome_drop] = inv.get(biome_drop, 0) + drop_qty
+
+        self._update_quest_progress(p, "adventure", 1)
+        self._advance_biome_quest(p, "adventure", 1)
+        level_msg = self._check_level_up(p)
+        update_player(uid, p)
+
+        crafted_tag = " (✨ Crafted Bonus!)" if p.get("sword_origin") == "crafted" else ""
+        await interaction.response.send_message(
+            f"🔥 **Hardmode Adventure in {biome.get('name', 'Unknown Biome')}**: +🪙 {earned_coins:,}{crafted_tag} | +⭐ {earned_xp:,} XP | +{drop_qty}x {biome_drop.title()}{level_msg}",
+            ephemeral=False,
+        )
+
+
+async def setup(bot):
+    await bot.add_cog(RpgCog(bot))
