@@ -1,7 +1,22 @@
+import json
+import os
 import discord
 from discord import app_commands
 from discord.ext import commands
 from database import get_player, get_all_players
+
+PETS_FILE = "/app/data/pets.json"
+
+
+def _load_pets_lookup() -> dict:
+    if not os.path.exists(PETS_FILE):
+        return {}
+    try:
+        with open(PETS_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return data if isinstance(data, dict) else {}
+    except (json.JSONDecodeError, OSError):
+        return {}
 
 
 def _extract_weapon_text(p: dict) -> str:
@@ -20,18 +35,62 @@ def _extract_weapon_text(p: dict) -> str:
 
 
 def _extract_dungeon_floor(p: dict) -> int:
-    for key in ("dungeon_floor", "highest_dungeon_floor", "floor", "max_floor"):
+    if not isinstance(p, dict):
+        return 0
+
+    direct_keys = (
+        "dungeon_floor",
+        "highest_dungeon_floor",
+        "max_dungeon_floor",
+        "current_dungeon_floor",
+        "floor",
+        "max_floor",
+        "current_floor",
+    )
+    for key in direct_keys:
         val = p.get(key)
-        if isinstance(val, int):
-            return val
-        if isinstance(val, dict):
-            for nested_key in ("floor", "highest", "current"):
-                if isinstance(val.get(nested_key), int):
-                    return val[nested_key]
+        if isinstance(val, int) and not isinstance(val, bool):
+            return max(0, val)
+        if isinstance(val, str) and val.isdigit():
+            return max(0, int(val))
+
+    for container_key in ("dungeon", "dungeons", "dungeon_progress", "progress"):
+        container = p.get(container_key)
+        if isinstance(container, int) and not isinstance(container, bool):
+            return max(0, container)
+        if isinstance(container, dict):
+            for nested_key in (
+                "floor",
+                "highest_floor",
+                "max_floor",
+                "current_floor",
+                "highest",
+                "current",
+                "level",
+            ):
+                nested_val = container.get(nested_key)
+                if isinstance(nested_val, int) and not isinstance(nested_val, bool):
+                    return max(0, nested_val)
+
     return 0
 
 
-def _extract_pet_text(p: dict) -> tuple[str, int]:
+def _extract_pet_text(p: dict, uid_str: str | None = None, pets_lookup: dict | None = None) -> tuple[str, int]:
+    if uid_str and isinstance(pets_lookup, dict):
+        pet_user = pets_lookup.get(str(uid_str))
+        if isinstance(pet_user, dict):
+            saved_active = pet_user.get("active_pet")
+            if isinstance(saved_active, dict) and saved_active.get("name"):
+                return str(saved_active["name"]), max(1, int(saved_active.get("level", 1) or 1))
+            if isinstance(saved_active, str) and saved_active.strip():
+                pet_name = saved_active.strip()
+                pet_lvl = 1
+                for inv_pet in pet_user.get("inventory", []):
+                    if isinstance(inv_pet, dict) and str(inv_pet.get("name", "")).lower() == pet_name.lower():
+                        pet_lvl = max(1, int(inv_pet.get("level", 1) or 1))
+                        break
+                return pet_name, pet_lvl
+
     active_pet = p.get("active_pet") or p.get("equipped_pet")
     pets_data = p.get("pets")
 
@@ -92,6 +151,7 @@ class StatsLeaderboardCog(commands.Cog):
                 ephemeral=True
             )
 
+        pets_lookup = _load_pets_lookup()
         wallet = int(p.get("wallet", 0))
         bank = int(p.get("bank", 0))
         total_coins = wallet + bank
@@ -99,7 +159,7 @@ class StatsLeaderboardCog(commands.Cog):
         xp = int(p.get("xp", 0))
         weapon_text = _extract_weapon_text(p)
         dungeon_floor = _extract_dungeon_floor(p)
-        pet_name, pet_lvl = _extract_pet_text(p)
+        pet_name, pet_lvl = _extract_pet_text(p, uid_str=uid, pets_lookup=pets_lookup)
 
         pet_display = f"{pet_name} (Lv. {pet_lvl})" if pet_lvl > 0 else "None"
 
@@ -130,6 +190,7 @@ class StatsLeaderboardCog(commands.Cog):
         await interaction.response.defer()
 
         all_players = get_all_players()
+        pets_lookup = _load_pets_lookup()
         guild = interaction.guild
 
         rows = []
@@ -146,7 +207,7 @@ class StatsLeaderboardCog(commands.Cog):
             level = int(p.get("level", 1))
             xp = int(p.get("xp", 0))
             floor = _extract_dungeon_floor(p)
-            pet_name, pet_lvl = _extract_pet_text(p)
+            pet_name, pet_lvl = _extract_pet_text(p, uid_str=uid_str, pets_lookup=pets_lookup)
             pet_display = f"{pet_name} (Lv.{pet_lvl})" if pet_lvl > 0 else "None"
 
             if category == "level":
