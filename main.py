@@ -21,6 +21,7 @@ class StarlightBot(commands.Bot):
         "rpg_cog",
         "shop_cog",
         "crafting_cog",
+        "gear_cog",  # Added /gear equipment & tier restriction cog!
         "party_cog",
         "quests_cog",
         "tickets_cog",
