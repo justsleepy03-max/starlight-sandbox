@@ -78,7 +78,7 @@ def get_cooldown_multiplier(user_id):
     return 1.0
 
 
-def _get_owned_gear_tiers(p: dict, slot: str, current_tier: int) -> list[int]:
+def _get_owned_gear_tiers(p: dict, slot: str, current_tier: int) -> list:
     """Return sorted gear tiers the player owns or has crafted, plus current_tier."""
     if not isinstance(p, dict):
         return [current_tier] if current_tier else []
@@ -97,7 +97,7 @@ def _get_owned_gear_tiers(p: dict, slot: str, current_tier: int) -> list[int]:
         else ["max_armor_tier", "highest_armor_tier", "armor_tier"]
     )
 
-    allowed: set[int] = {int(current_tier)} if int(current_tier) in catalog else set()
+    allowed = {int(current_tier)} if int(current_tier) in catalog else set()
 
     for key in list_keys:
         raw_list = p.get(key)
@@ -186,229 +186,11 @@ AREA_LEVEL_REQUIREMENTS = {
 
 # --- INTERACTIVE VIEWS & MODALS ---
 class GearSelect(discord.ui.Select):
-    def __init__(self, cog, user_id: str, slot: str, current_tier: int, allowed_tiers: list[int] | None = None):
+    def __init__(self, cog, user_id: str, slot: str, current_tier: int, allowed_tiers=None):
         self.cog = cog
         self.user_id = user_id
         self.slot = slot  # "weapon" or "armor"
 
         catalog = SWORDS if slot == "weapon" else ARMORS
         player_data = get_player(user_id)
-        tiers_to_show = allowed_tiers if allowed_tiers is not None else _get_owned_gear_tiers(player_data, slot, current_tier)
-
-        options = []
-        for tier in tiers_to_show:
-            data = catalog.get(tier)
-            if not data:
-                continue
-            name = str(data.get("name", f"Tier {tier}")).title()
-            stat_label = (
-                f"AT {data.get('at', tier)}"
-                if slot == "weapon"
-                else f"DEF {data.get('def', 0)}"
-            )
-            is_equipped = tier == current_tier
-            desc = f"Equipped • {stat_label}" if is_equipped else f"Owned/Crafted • {stat_label}"
-            options.append(
-                discord.SelectOption(
-                    label=f"T{tier}: {name}"[:100],
-                    value=str(tier),
-                    description=desc[:100],
-                    emoji="✅" if is_equipped else ("⚔️" if slot == "weapon" else "🛡️"),
-                    default=is_equipped,
-                )
-            )
-
-        if not options:
-            fallback_tier = current_tier if current_tier in catalog else 1
-            data = catalog.get(fallback_tier, {})
-            name = str(data.get("name", f"Tier {fallback_tier}")).title()
-            options.append(
-                discord.SelectOption(
-                    label=f"T{fallback_tier}: {name}"[:100],
-                    value=str(fallback_tier),
-                    description="No extra owned/crafted tiers unlocked yet"[:100],
-                    emoji="⚔️" if slot == "weapon" else "🛡️",
-                    default=True,
-                )
-            )
-
-        placeholder = (
-            "Choose an owned/crafted sword to equip..."
-            if slot == "weapon"
-            else "Choose an owned/crafted armor to equip..."
-        )
-        super().__init__(
-            placeholder=placeholder,
-            min_values=1,
-            max_values=1,
-            options=options[:25],
-            custom_id=f"rpg_select_{slot}",
-        )
-
-    async def callback(self, interaction: discord.Interaction):
-        if str(interaction.user.id) != self.user_id:
-            await interaction.response.send_message(
-                "❌ This gear menu doesn't belong to you! Use `/profile` to open your own.",
-                ephemeral=True,
-            )
-            return
-
-        chosen_tier = int(self.values[0])
-        p = get_player(self.user_id)
-        if not isinstance(p, dict) or not p:
-            await interaction.response.send_message("❌ No RPG profile found yet.", ephemeral=True)
-            return
-
-        slot_key = "sword_tier" if self.slot == "weapon" else "armor_tier"
-        current_tier = int(p.get(slot_key, 1))
-        allowed_tiers = _get_owned_gear_tiers(p, self.slot, current_tier)
-
-        if chosen_tier not in allowed_tiers:
-            gear_label = "sword/weapon" if self.slot == "weapon" else "armor"
-            await interaction.response.send_message(
-                f"❌ You don't own or craft **Tier {chosen_tier}** {gear_label}! Buy or forge it first.",
-                ephemeral=True,
-            )
-            return
-
-        if self.slot == "weapon":
-            data = SWORDS.get(chosen_tier)
-            if not data:
-                await interaction.response.send_message("❌ Invalid weapon tier.", ephemeral=True)
-                return
-            origin = p.get("sword_origin", "shop")
-            p["sword_tier"] = chosen_tier
-            p["sword_origin"] = origin
-            update_player(self.user_id, p)
-            perk = " (+15% Hunt Coins)" if origin == "crafted" else ""
-            item_title = data["name"].title()
-            msg = f"⚔️ Equipped **Tier {chosen_tier}: {item_title}** `[{origin.upper()}]`{perk}!"
-        else:
-            data = ARMORS.get(chosen_tier)
-            if not data:
-                await interaction.response.send_message("❌ Invalid armor tier.", ephemeral=True)
-                return
-            origin = p.get("armor_origin", "shop")
-            p["armor_tier"] = chosen_tier
-            p["armor_origin"] = origin
-            update_player(self.user_id, p)
-            perk = " (+25% Gathering Yield)" if origin == "crafted" else ""
-            item_title = data["name"].title()
-            msg = f"🛡️ Equipped **Tier {chosen_tier}: {item_title}** `[{origin.upper()}]`{perk}!"
-
-        await interaction.response.edit_message(content=msg, view=None)
-
-
-class GearSelectView(discord.ui.View):
-    def __init__(self, cog, user_id: str, slot: str, current_tier: int, allowed_tiers: list[int] | None = None):
-        super().__init__(timeout=120)
-        self.user_id = user_id
-        self.add_item(GearSelect(cog, user_id, slot, current_tier, allowed_tiers))
-
-    async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        if str(interaction.user.id) != self.user_id:
-            await interaction.response.send_message(
-                "❌ This gear menu doesn't belong to you! Use `/profile` to open your own.",
-                ephemeral=True,
-            )
-            return False
-        return True
-
-
-class RPGActionView(discord.ui.View):
-    def __init__(self, cog, user_id):
-        super().__init__(timeout=180)
-        self.cog = cog
-        self.user_id = user_id
-
-    async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        if str(interaction.user.id) != self.user_id:
-            await interaction.response.send_message(
-                "❌ This action menu doesn't belong to you! Use `/profile` to open your own.",
-                ephemeral=True,
-            )
-            return False
-        return True
-
-    @discord.ui.button(label="⚔️ Hunt", style=discord.ButtonStyle.danger, custom_id="rpg_hunt")
-    async def hunt_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.cog.execute_hunt(interaction)
-
-    @discord.ui.button(label="🗺️ Adventure", style=discord.ButtonStyle.primary, custom_id="rpg_adventure")
-    async def adventure_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.cog.execute_adventure(interaction)
-
-    @discord.ui.button(label="🪓 Chop", style=discord.ButtonStyle.success, custom_id="rpg_chop")
-    async def chop_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.cog.execute_chop(interaction)
-
-    @discord.ui.button(label="🎣 Fish", style=discord.ButtonStyle.secondary, custom_id="rpg_fish")
-    async def fish_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.cog.execute_fish(interaction)
-
-    @discord.ui.button(label="⚔️ Sword", style=discord.ButtonStyle.secondary, custom_id="rpg_equip_sword")
-    async def equip_sword_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        p = get_player(self.user_id)
-        current_tier = int(p.get("sword_tier", 1)) if isinstance(p, dict) else 1
-        allowed_tiers = _get_owned_gear_tiers(p, "weapon", current_tier)
-        view = GearSelectView(self.cog, self.user_id, "weapon", current_tier, allowed_tiers)
-        await interaction.response.send_message(
-            "⚔️ Select an owned or crafted sword/weapon tier to equip:",
-            view=view,
-            ephemeral=True,
-        )
-
-    @discord.ui.button(label="🛡️ Armor", style=discord.ButtonStyle.secondary, custom_id="rpg_equip_armor")
-    async def equip_armor_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        p = get_player(self.user_id)
-        current_tier = int(p.get("armor_tier", 1)) if isinstance(p, dict) else 1
-        allowed_tiers = _get_owned_gear_tiers(p, "armor", current_tier)
-        view = GearSelectView(self.cog, self.user_id, "armor", current_tier, allowed_tiers)
-        await interaction.response.send_message(
-            "🛡️ Select an owned or crafted armor tier to equip:",
-            view=view,
-            ephemeral=True,
-        )
-
-
-class AreaSelect(discord.ui.Select):
-    def __init__(self, cog, user_id: str, current_area: int, unlocked_area: int):
-        self.cog = cog
-        self.user_id = user_id
-
-        options = []
-        for a_id in range(1, unlocked_area + 1):
-            b_name = AREA_BIOMES.get(a_id, {}).get("name", "Unknown")
-            req_lvl = AREA_LEVEL_REQUIREMENTS.get(a_id, 1)
-            is_current = a_id == current_area
-            options.append(
-                discord.SelectOption(
-                    label=f"Area {a_id}: {b_name}",
-                    value=str(a_id),
-                    description=f"Current location (Lv. {req_lvl}+)" if is_current else f"Travel to {b_name} (Lv. {req_lvl}+)",
-                    emoji="📍" if is_current else "🧭",
-                    default=is_current,
-                )
-            )
-
-        super().__init__(
-            placeholder="Select an unlocked area to travel to...",
-            min_values=1,
-            max_values=1,
-            options=options,
-            custom_id="area_travel_select",
-        )
-
-    async def callback(self, interaction: discord.Interaction):
-        if str(interaction.user.id) != self.user_id:
-            await interaction.response.send_message(
-                "❌ This travel menu doesn't belong to you! Use `/area` to open your own.",
-                ephemeral=True,
-            )
-            return
-
-        chosen_area = int(self.values[0])
-        p = get_player(self.user_id)
-        unlocked = self.cog._sync_unlocked_area(p)
-
-        if chosen
+        tiers_to_show = allowed_tiers if allowed_tiers is not None else _get_owned_gear_tiers
