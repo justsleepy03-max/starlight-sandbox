@@ -35,6 +35,7 @@ class StarlightBot(commands.Bot):
         "utility_cog",  # Added /utility sub-menu & /equip commands!
         "stats_leaderboard_cog",  # Added /stats & /leaderboard cog!
         "feedback_cog",  # Added /feedback beta reporting cog!
+        "help_cog",  # Added interactive /help button menu cog!
         "release_scheduler_cog",  # Scheduled releases cog (Dec 4, 2026 @ 10:00 AM GMT)
     ]
 
