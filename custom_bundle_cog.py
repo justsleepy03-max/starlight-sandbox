@@ -6,55 +6,48 @@ from discord import app_commands
 from discord.ext import commands
 from database import get_player, update_player
 
-# Replace with your Discord User ID (int) if you want an explicit hard lock
+# Optional: Set your Discord user ID (int) here for a hard lock, or leave None to use bot owner checks
 EXPLICIT_OWNER_ID: Optional[int] = None
 
-BUNDLES_FILE = Path("data/bundles.json")
+CUSTOM_BUNDLES_FILE = Path("data/custom_bundles.json")
 
-DEFAULT_BUNDLES: dict[str, dict] = {
-    "quest_fix": {
+DEFAULT_CUSTOM_BUNDLES: dict[str, dict] = {
+    "bug_comp": {
         "label": "Quest Bug Compensation",
         "coins": 15000,
         "xp": 6000,
         "items": {"magma core": 15},
-        "eggs": {"common": 1},
-    },
-    "starter_boost": {
-        "label": "Starter Supply Pack",
-        "coins": 5000,
-        "xp": 1500,
-        "items": {"wood": 50, "iron ore": 25},
-        "eggs": {"common": 1},
-    },
-    "tester_pack": {
-        "label": "Playtester Compensation Pack",
-        "coins": 25000,
-        "xp": 10000,
-        "items": {"wood": 100, "iron ore": 50, "magma core": 10},
         "eggs": {"golden": 1},
+    },
+    "tester_topup": {
+        "label": "Beta Tester Top-Up",
+        "coins": 10000,
+        "xp": 2500,
+        "items": {"wood": 50, "iron ore": 25},
+        "eggs": {},
     },
 }
 
 
-def load_bundles() -> dict[str, dict]:
-    if not BUNDLES_FILE.exists():
-        BUNDLES_FILE.parent.mkdir(parents=True, exist_ok=True)
-        save_bundles(DEFAULT_BUNDLES)
-        return json.loads(json.dumps(DEFAULT_BUNDLES))
-    with BUNDLES_FILE.open("r", encoding="utf-8") as f:
+def load_custom_bundles() -> dict[str, dict]:
+    if not CUSTOM_BUNDLES_FILE.exists():
+        CUSTOM_BUNDLES_FILE.parent.mkdir(parents=True, exist_ok=True)
+        save_custom_bundles(DEFAULT_CUSTOM_BUNDLES)
+        return json.loads(json.dumps(DEFAULT_CUSTOM_BUNDLES))
+    with CUSTOM_BUNDLES_FILE.open("r", encoding="utf-8") as f:
         return json.load(f)
 
 
-def save_bundles(data: dict[str, dict]) -> None:
-    BUNDLES_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with BUNDLES_FILE.open("w", encoding="utf-8") as f:
+def save_custom_bundles(data: dict[str, dict]) -> None:
+    CUSTOM_BUNDLES_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with CUSTOM_BUNDLES_FILE.open("w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
 
 
-class BundleAdminCog(commands.Cog):
+class CustomBundleCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.bundles: dict[str, dict] = load_bundles()
+        self.bundles: dict[str, dict] = load_custom_bundles()
 
     async def _is_bot_owner(self, interaction: discord.Interaction) -> bool:
         if EXPLICIT_OWNER_ID is not None:
@@ -107,22 +100,22 @@ class BundleAdminCog(commands.Cog):
 
         return granted
 
-    @app_commands.command(name="givebundle", description="[Owner Only] Send a bundle or custom bug-fix rewards to a player.")
+    @app_commands.command(name="custombundle", description="[Owner Only] Send a custom bundle or preset rewards to a player.")
     @app_commands.describe(
-        member="Player to receive the bundle",
-        bundle="Preset bundle name (optional if giving custom rewards)",
-        coins="Extra/custom coins to grant",
-        xp="Extra/custom XP to grant",
-        item="Material/item name to grant (e.g., magma core)",
+        member="Player to receive the custom bundle",
+        preset="Saved custom preset name (optional)",
+        coins="Coins to grant",
+        xp="XP to grant",
+        item="Item/material name to grant (e.g., magma core)",
         item_qty="Quantity of the item to grant",
         egg_type="Egg rarity to grant (e.g., common, golden)",
         egg_qty="Number of eggs to grant",
     )
-    async def givebundle(
+    async def custombundle(
         self,
         interaction: discord.Interaction,
         member: discord.Member,
-        bundle: Optional[str] = None,
+        preset: Optional[str] = None,
         coins: int = 0,
         xp: int = 0,
         item: Optional[str] = None,
@@ -143,29 +136,29 @@ class BundleAdminCog(commands.Cog):
             )
             return
 
-        preset = self.bundles.get(bundle.lower()) if bundle else None
-        if bundle and not preset:
+        chosen_preset = self.bundles.get(preset.lower()) if preset else None
+        if preset and not chosen_preset:
             available = ", ".join(f"`{k}`" for k in self.bundles.keys()) or "*none*"
             await interaction.response.send_message(
-                f"❌ Unknown bundle `{bundle}`. Available presets: {available}",
+                f"❌ Unknown custom preset `{preset}`. Available presets: {available}",
                 ephemeral=True,
             )
             return
 
-        total_coins = (preset.get("coins", 0) if preset else 0) + coins
-        total_xp = (preset.get("xp", 0) if preset else 0) + xp
+        total_coins = (chosen_preset.get("coins", 0) if chosen_preset else 0) + coins
+        total_xp = (chosen_preset.get("xp", 0) if chosen_preset else 0) + xp
 
         merged_items: dict[str, int] = {}
-        if preset and isinstance(preset.get("items"), dict):
-            for k, v in preset["items"].items():
+        if chosen_preset and isinstance(chosen_preset.get("items"), dict):
+            for k, v in chosen_preset["items"].items():
                 merged_items[k.lower()] = merged_items.get(k.lower(), 0) + int(v)
         if item and item_qty > 0:
             i_key = item.strip().lower()
             merged_items[i_key] = merged_items.get(i_key, 0) + int(item_qty)
 
         merged_eggs: dict[str, int] = {}
-        if preset and isinstance(preset.get("eggs"), dict):
-            for k, v in preset["eggs"].items():
+        if chosen_preset and isinstance(chosen_preset.get("eggs"), dict):
+            for k, v in chosen_preset["eggs"].items():
                 merged_eggs[k.lower()] = merged_eggs.get(k.lower(), 0) + int(v)
         if egg_type and egg_qty > 0:
             e_key = egg_type.strip().lower()
@@ -181,14 +174,14 @@ class BundleAdminCog(commands.Cog):
 
         if not granted:
             await interaction.response.send_message(
-                "❌ Nothing to send—choose a preset bundle or enter coins, XP, items, or eggs.",
+                "❌ Nothing to send—pick a preset or specify coins, XP, items, or eggs.",
                 ephemeral=True,
             )
             return
 
         update_player(uid, p)
 
-        title_label = preset["label"] if preset else "Custom Compensation Bundle"
+        title_label = chosen_preset["label"] if chosen_preset else "Custom Bundle"
         embed = discord.Embed(
             title=f"🎁 {title_label}",
             description=f"Sent to {member.mention} by {interaction.user.mention}:\n" + "\n".join(granted),
@@ -196,18 +189,18 @@ class BundleAdminCog(commands.Cog):
         )
         await interaction.response.send_message(embed=embed)
 
-    @app_commands.command(name="setbundle", description="[Owner Only] Create or edit a bundle preset.")
+    @app_commands.command(name="setcustombundle", description="[Owner Only] Create or edit a custom bundle preset.")
     @app_commands.describe(
-        name="Bundle key (e.g., quest_fix)",
-        coins="Coins in this bundle",
-        xp="XP in this bundle",
-        item="Material/item name (optional)",
+        name="Preset key (e.g., bug_comp)",
+        coins="Coins in this preset",
+        xp="XP in this preset",
+        item="Item/material name (optional)",
         item_qty="Quantity of that item",
         egg_type="Egg rarity (optional, e.g., common, golden)",
         egg_qty="Number of eggs",
         label="Display title for the bundle",
     )
-    async def setbundle(
+    async def setcustombundle(
         self,
         interaction: discord.Interaction,
         name: str,
@@ -255,26 +248,26 @@ class BundleAdminCog(commands.Cog):
         existing["eggs"] = eggs_dict
 
         self.bundles[key] = existing
-        save_bundles(self.bundles)
+        save_custom_bundles(self.bundles)
 
         await interaction.response.send_message(
-            f"✅ Saved bundle **`{key}`** (*{existing['label']}*) — "
+            f"✅ Saved custom bundle **`{key}`** (*{existing['label']}*) — "
             f"🪙 `{existing['coins']:,}` | ⭐ `{existing['xp']:,}` | "
             f"Items: `{existing['items']}` | Eggs: `{existing['eggs']}`",
             ephemeral=True,
         )
 
-    @app_commands.command(name="listbundles", description="[Owner Only] View all configured bundle presets.")
-    async def listbundles(self, interaction: discord.Interaction):
+    @app_commands.command(name="listcustombundles", description="[Owner Only] View all saved custom bundle presets.")
+    async def listcustombundles(self, interaction: discord.Interaction):
         if not await self._is_bot_owner(interaction):
             await self._deny_non_owner(interaction)
             return
 
         if not self.bundles:
-            await interaction.response.send_message("No bundles configured yet.", ephemeral=True)
+            await interaction.response.send_message("No custom bundles saved yet.", ephemeral=True)
             return
 
-        embed = discord.Embed(title="📦 Configured Bundles", color=discord.Color.blurple())
+        embed = discord.Embed(title="📦 Saved Custom Bundles", color=discord.Color.blurple())
         for key, b in self.bundles.items():
             embed.add_field(
                 name=f"`{key}` — {b.get('label', key)}",
@@ -287,8 +280,8 @@ class BundleAdminCog(commands.Cog):
             )
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    @givebundle.autocomplete("bundle")
-    async def bundle_autocomplete(self, interaction: discord.Interaction, current: str):
+    @custombundle.autocomplete("preset")
+    async def preset_autocomplete(self, interaction: discord.Interaction, current: str):
         query = current.lower()
         return [
             app_commands.Choice(name=f"{k} ({v.get('label', k)})", value=k)
@@ -298,4 +291,4 @@ class BundleAdminCog(commands.Cog):
 
 
 async def setup(bot: commands.Bot):
-    await bot.add_cog(BundleAdminCog(bot))
+    await bot.add_cog(CustomBundleCog(bot))
