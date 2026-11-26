@@ -167,4 +167,7 @@ class HelpCog(commands.Cog):
 
 
 async def setup(bot: commands.Bot):
+    existing = bot.tree.get_command("help")
+    if existing is not None:
+        bot.tree.remove_command("help")
     await bot.add_cog(HelpCog(bot))
