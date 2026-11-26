@@ -50,6 +50,8 @@ MATERIAL_POOLS = {
     "Mythic / Endgame": ["chrono dust", "starlight essence", "void matter", "world-tree sap", "singularity core"],
 }
 
+CRAFT_QUEST_TYPES = {"craft", "forge", "upgrade", "forge_or_upgrade", "craft_or_upgrade", "gear_craft", "gear_upgrade"}
+
 
 def get_recipe_for_tier(gear_type: str, target_tier: int) -> dict:
     """Returns a normalized recipe dict {'label', 'coins', 'wood', 'iron ore', 'mats'} for tiers 2-15."""
@@ -180,10 +182,56 @@ class CraftingCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
+    def _matches_gear_craft_objective(self, quest: dict) -> bool:
+        q_type = str(quest.get("type") or quest.get("objective_type") or quest.get("action") or "").lower()
+        if q_type in CRAFT_QUEST_TYPES:
+            return True
+
+        desc = " ".join(
+            str(quest.get(field) or "")
+            for field in ("objective", "description", "goal", "title", "name")
+        ).lower()
+        return any(word in desc for word in ("forge", "forging", "upgrade", "craft gear", "piece of gear"))
+
+    def _increment_quest_dict(self, quest: dict, amount: int) -> bool:
+        if not isinstance(quest, dict):
+            return False
+        if quest.get("completed") or quest.get("claimed"):
+            return False
+
+        target = int(quest.get("target", 1))
+        progress = int(quest.get("progress", 0))
+        if progress < target:
+            new_progress = min(target, progress + amount)
+            quest["progress"] = new_progress
+            if new_progress >= target:
+                quest["ready_to_claim"] = True
+            return True
+        return False
+
+    def _update_biome_quest_progress(self, p: dict, amount: int = 1):
+        for key in ("biome_quest", "active_biome_quest"):
+            quest = p.get(key)
+            if isinstance(quest, dict) and self._matches_gear_craft_objective(quest):
+                self._increment_quest_dict(quest, amount)
+
+        quest_list = p.get("biome_quests")
+        if isinstance(quest_list, list):
+            for quest in quest_list:
+                if isinstance(quest, dict) and self._matches_gear_craft_objective(quest):
+                    self._increment_quest_dict(quest, amount)
+        elif isinstance(quest_list, dict):
+            for quest in quest_list.values():
+                if isinstance(quest, dict) and self._matches_gear_craft_objective(quest):
+                    self._increment_quest_dict(quest, amount)
+
     def _update_quest_progress(self, p, action_type, amount=1):
         active = p.get("active_quest")
-        if active and active["type"] == action_type and active["progress"] < active["target"]:
+        if active and active.get("type") == action_type and active.get("progress", 0) < active.get("target", 0):
             active["progress"] = min(active["target"], active["progress"] + amount)
+
+        if action_type in CRAFT_QUEST_TYPES:
+            self._update_biome_quest_progress(p, amount)
 
     def _check_level_up(self, p):
         level = p.get("level", 1)
