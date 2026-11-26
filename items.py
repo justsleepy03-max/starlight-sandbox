@@ -58,7 +58,6 @@ MISC_ITEMS = {
     "celestial vitality draught": {"price": 150000, "desc": "Restores +500 HP and grants +75 Max HP via /heal."},
     "transcendent life flask": {"price": 750000, "desc": "Restores +1,000 HP and grants +150 Max HP via /heal."},
     "dungeon key": {"price": 5000, "desc": "Required to enter the /dungeon"},
-    "lottery ticket": {"price": 50, "desc": "To join the /lottery"},
     "seed": {"price": 4000, "desc": "Used to /farm"},
     "portable workbench": {"price": 10000, "desc": "Allows you to craft on the go anywhere in the field."},
     "common lootbox": {"price": 800, "desc": "Contains a few items, open with /open"},
@@ -99,7 +98,19 @@ PLUSHIES = {
     "shadow mouse plushie": {"price": 50000, "desc": "Sneaky collectible plush for true hoarders."},
     "crystal golem plushie": {"price": 100000, "desc": "Surprisingly soft despite looking like solid rock."},
     "ancient dragon plushie": {"price": 250000, "desc": "Stuffed with real fire-resistant fluff."},
-    "golden starlight plushie": {"price": 1000000, "desc": "Pure flexing rights. Limited sandbox edition."}
+    "golden starlight plushie": {"price": 1000000, "desc": "Pure flexing rights. Limited sandbox edition."},
+    "pocket sprout plushie": {"price": 1000, "desc": "Tiny leafy buddy—rumor says sprouts like this might grow up later."},
+    "mossy toad plushie": {"price": 3500, "desc": "Plump, round, and suspiciously serene near damp hollows."},
+    "ember spark plushie": {"price": 8500, "desc": "Warm stitching with a cheerful little tail flame—feels like an early spark of something bigger."},
+    "frost wyvern plushie": {"price": 18000, "desc": "Icy blue wings and extra-soft belly fluff—a frosty preview from colder peaks."},
+    "abyssal squid plushie": {"price": 40000, "desc": "Eight floppy tentacles for deep-sea sofa sessions and abyssal hints."},
+    "celestial owl plushie": {"price": 75000, "desc": "Big sleepy eyes and starry night feathers—ideal for late-night snoozes."},
+    "temporal rift plushie": {"price": 150000, "desc": "Slightly crooked seams that feel a second ahead of the timeline."},
+    "dungeon mimic plushie": {"price": 200000, "desc": "Looks like a tiny chest—promise it won't bite... unless it wakes up."},
+    "eclipse wyrm plushie": {"price": 350000, "desc": "Dark velvet scales edged with faint silver trim—whispers of a shadow companion."},
+    "void sovereign plushie": {"price": 600000, "desc": "Wears a tiny crown and radiates serious abyssal hoard energy."},
+    "hypernova fox plushie": {"price": 800000, "desc": "Fluffy multi-tailed cosmic collector piece—worth watching the stars for."},
+    "starlight prime plushie": {"price": 1500000, "desc": "The centerpiece plush for true completionists and prime legends."},
 }
 
 
