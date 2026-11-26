@@ -42,9 +42,10 @@ class ShopSelect(discord.ui.Select):
             discord.SelectOption(label="Page 2: Eggs & Utilities", value="2", emoji="🥚", description="Pet Eggs, Potions & Life Boosts"),
             discord.SelectOption(label="Page 3: Lootboxes & Bundles", value="3", emoji="📦", description="Mystery Crates & Starter Packs"),
             discord.SelectOption(label="Page 4: Crafting Resources", value="4", emoji="🪵", description="Wood, Ores & Rare Biome Materials"),
-            discord.SelectOption(label="Page 5: Collectible Plushies", value="5", emoji="🧸", description="Rare Plushies to Hoard & Flex"),
+            discord.SelectOption(label="Page 5: Collectible Plushies", value="5", emoji="🧸", description="Classic & Teaser Plushies (Part 1)"),
+            discord.SelectOption(label="Page 6: More Plushies", value="6", emoji="✨", description="Mythic & Flex Plushies (Part 2)"),
         ]
-        super().__init__(placeholder="Select a shop category (Pages 1–5)...", min_values=1, max_values=1, options=options)
+        super().__init__(placeholder="Select a shop category (Pages 1–6)...", min_values=1, max_values=1, options=options)
 
     async def callback(self, interaction: discord.Interaction):
         page = int(self.values[0])
@@ -72,8 +73,11 @@ class ShopCog(commands.Cog):
         self.bot = bot
 
     def get_shop_embed(self, page: int) -> discord.Embed:
+        plush_items = list(PLUSHIES.items())
+        midpoint = (len(plush_items) + 1) // 2
+
         if page == 1:
-            embed = discord.Embed(title="🛒 Starlight Shop - Page 1/5 (Weapons & Armor)", color=discord.Color.blue())
+            embed = discord.Embed(title="🛒 Starlight Shop - Page 1/6 (Weapons & Armor)", color=discord.Color.blue())
             swords_text = _truncate_field(
                 "\n".join([f"⚔️ **{data['name']}** (T{tier}) | 🪙 {data['price']:,}" for tier, data in SWORDS.items()])
             )
@@ -83,7 +87,7 @@ class ShopCog(commands.Cog):
             embed.add_field(name="Swords (Tiers 1–15)", value=swords_text or "None", inline=True)
             embed.add_field(name="Armor Sets (Tiers 1–15)", value=armors_text or "None", inline=True)
         elif page == 2:
-            embed = discord.Embed(title="🛒 Starlight Shop - Page 2/5 (Eggs & Utilities)", color=discord.Color.blue())
+            embed = discord.Embed(title="🛒 Starlight Shop - Page 2/6 (Eggs & Utilities)", color=discord.Color.blue())
             eggs_text = _truncate_field(
                 "\n".join([f"🥚 **{name}** | 🪙 {data['price']:,}\n*{data['desc']}*" for name, data in PET_EGGS.items()])
             )
@@ -93,7 +97,7 @@ class ShopCog(commands.Cog):
             embed.add_field(name="Pet Eggs (Incl. Transcendent)", value=eggs_text or "None", inline=False)
             embed.add_field(name="Utilities, Consumables & Boosts", value=misc_text or "None", inline=False)
         elif page == 3:
-            embed = discord.Embed(title="✨ Starlight Shop - Page 3/5 (Lootboxes & Bundles)", color=discord.Color.purple())
+            embed = discord.Embed(title="✨ Starlight Shop - Page 3/6 (Lootboxes & Bundles)", color=discord.Color.purple())
             lootboxes_text = _truncate_field(
                 "\n".join([f"📦 **{name}** | 🪙 {data['price']:,}\n*{data['desc']}*" for name, data in MISC_ITEMS.items() if "lootbox" in name])
             )
@@ -103,17 +107,23 @@ class ShopCog(commands.Cog):
             embed.add_field(name="Lootboxes", value=lootboxes_text or "None", inline=False)
             embed.add_field(name="Starlight Bundles", value=bundles_text or "None", inline=False)
         elif page == 4:
-            embed = discord.Embed(title="🪵 Starlight Shop - Page 4/5 (Crafting Resources)", color=discord.Color.green())
+            embed = discord.Embed(title="🪵 Starlight Shop - Page 4/6 (Crafting Resources)", color=discord.Color.green())
             res_text = _truncate_field(
                 "\n".join([f"🧱 **{name}** | 🪙 {data['price']:,}\n*{data['desc']}*" for name, data in RESOURCES.items()])
             )
             embed.add_field(name="Raw Materials & Catalysts", value=res_text or "None", inline=False)
-        else:
-            embed = discord.Embed(title="🧸 Starlight Shop - Page 5/5 (Collectible Plushies)", color=discord.Color.magenta())
+        elif page == 5:
+            embed = discord.Embed(title="🧸 Starlight Shop - Page 5/6 (Collectible Plushies)", color=discord.Color.magenta())
             plush_text = _truncate_field(
-                "\n".join([f"🧸 **{name}** | 🪙 {data['price']:,}\n*{data['desc']}*" for name, data in PLUSHIES.items()])
+                "\n".join([f"🧸 **{name}** | 🪙 {data['price']:,}\n*{data['desc']}*" for name, data in plush_items[:midpoint]])
             )
-            embed.add_field(name="Hoarder's Plushie Collection", value=plush_text or "None", inline=False)
+            embed.add_field(name="Hoarder's Plushie Collection (Part 1)", value=plush_text or "None", inline=False)
+        else:
+            embed = discord.Embed(title="🧸 Starlight Shop - Page 6/6 (More Plushies)", color=discord.Color.magenta())
+            plush_text = _truncate_field(
+                "\n".join([f"🧸 **{name}** | 🪙 {data['price']:,}\n*{data['desc']}*" for name, data in plush_items[midpoint:]])
+            )
+            embed.add_field(name="Hoarder's Plushie Collection (Part 2)", value=plush_text or "None", inline=False)
 
         embed.set_footer(text="Use /buy item_name:<name> quantity:<amount> to purchase! (Use /economy for wallet & bank)")
         return embed
