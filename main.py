@@ -32,6 +32,7 @@ class StarlightBot(commands.Bot):
         "guilds_cog",
         "dungeons_cog",  # Added 100-Floor Starlight Spire Cog!
         "area_expansions_cog",  # Added Area-Locked Expansion Commands!
+        "cooking_quests_cog",  # Added interactive /kitchen recipes, buffs & daily commissions cog!
         "utility_cog",  # Added /utility sub-menu & /equip commands!
         "stats_leaderboard_cog",  # Added /stats & /leaderboard cog!
         "feedback_cog",  # Added /feedback beta reporting cog!
