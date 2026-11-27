@@ -35,6 +35,56 @@ LOOT_TABLES = {
     "tier_4": ["chrono dust", "starlight essence", "void matter", "world-tree sap", "singularity core", "epic lootbox", "celestial egg"]
 }
 
+# Exact scaling table for NG+1 through NG+5, with smooth uncapped escalation beyond NG+5
+NG_PLUS_SCALING = {
+    0: {"atk": 1.00, "hp": 1.00, "reward": 1.00},
+    1: {"atk": 1.35, "hp": 1.25, "reward": 1.20},
+    2: {"atk": 1.70, "hp": 1.55, "reward": 1.40},
+    3: {"atk": 2.10, "hp": 1.90, "reward": 1.65},
+    4: {"atk": 2.55, "hp": 2.30, "reward": 1.90},
+    5: {"atk": 3.00, "hp": 2.75, "reward": 2.15},
+}
+
+
+def get_ng_multipliers(ng_tier: int) -> dict:
+    """Returns enemy ATK, enemy HP, and reward multipliers for the given NG+ tier."""
+    if ng_tier <= 0:
+        return NG_PLUS_SCALING[0]
+    if ng_tier in NG_PLUS_SCALING:
+        return NG_PLUS_SCALING[ng_tier]
+    extra_tiers = ng_tier - 5
+    return {
+        "atk": round(3.00 + (extra_tiers * 0.45), 2),
+        "hp": round(2.75 + (extra_tiers * 0.45), 2),
+        "reward": round(2.15 + (extra_tiers * 0.25), 2),
+    }
+
+
+def format_ng_label(ng_tier: int) -> str:
+    return "Normal" if ng_tier <= 0 else f"NG+{ng_tier}"
+
+
+def get_tier_cleared_floor(player_data: dict, ng_tier: int) -> int:
+    """Returns highest floor cleared on the active NG+ tier (preserves legacy dungeon_floor for Normal)."""
+    if ng_tier <= 0:
+        return int(player_data.get("dungeon_floor", 0))
+    ng_floors = player_data.get("spire_ng_floors", {})
+    if not isinstance(ng_floors, dict):
+        return 0
+    return int(ng_floors.get(str(ng_tier), 0))
+
+
+def set_tier_cleared_floor(player_data: dict, ng_tier: int, floor_num: int):
+    floor_num = min(100, max(0, int(floor_num)))
+    if ng_tier <= 0:
+        if floor_num > int(player_data.get("dungeon_floor", 0)):
+            player_data["dungeon_floor"] = floor_num
+    else:
+        ng_floors = player_data.setdefault("spire_ng_floors", {})
+        key = str(ng_tier)
+        if floor_num > int(ng_floors.get(key, 0)):
+            ng_floors[key] = floor_num
+
 
 def get_pet_combat_bonus(user_id: str) -> float:
     """Returns a damage multiplier based on the player's active pet."""
@@ -57,16 +107,28 @@ def get_pet_combat_bonus(user_id: str) -> float:
 
 
 class DungeonCombatView(discord.ui.View):
-    def __init__(self, user_id: str, floor: int, enemy_name: str, enemy_hp: int, enemy_max_hp: int, enemy_atk: int, is_boss: bool):
+    def __init__(
+        self,
+        user_id: str,
+        floor: int,
+        ng_tier: int,
+        enemy_name: str,
+        enemy_hp: int,
+        enemy_max_hp: int,
+        enemy_atk: int,
+        is_boss: bool,
+    ):
         super().__init__(timeout=180)
         self.user_id = user_id
         self.floor = floor
+        self.ng_tier = ng_tier
         self.enemy_name = enemy_name
         self.enemy_hp = enemy_hp
         self.enemy_max_hp = enemy_max_hp
         self.enemy_atk = enemy_atk
         self.is_boss = is_boss
-        self.combat_log = [f"⚔️ **Floor {floor}** battle started against **{enemy_name}**!"]
+        tier_tag = f" [{format_ng_label(ng_tier)}]" if ng_tier > 0 else ""
+        self.combat_log = [f"⚔️ **Floor {floor}{tier_tag}** battle started against **{enemy_name}**!"]
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if str(interaction.user.id) != self.user_id:
@@ -82,8 +144,9 @@ class DungeonCombatView(discord.ui.View):
         armor_tier = player_data.get("armor_tier", 1)
 
         title_prefix = "👑 BOSS FLOOR" if self.is_boss else "🏰 TOWER FLOOR"
+        tier_badge = f" [{format_ng_label(self.ng_tier)}]" if self.ng_tier > 0 else ""
         embed = discord.Embed(
-            title=f"{title_prefix} {self.floor} — {self.enemy_name}",
+            title=f"{title_prefix} {self.floor}{tier_badge} — {self.enemy_name}",
             color=status_color
         )
         embed.add_field(
@@ -98,7 +161,7 @@ class DungeonCombatView(discord.ui.View):
         )
         recent_logs = "\n".join(self.combat_log[-4:])
         embed.add_field(name="📜 Combat Log", value=recent_logs, inline=False)
-        embed.set_footer(text="Starlight 100-Floor Spire • Choose your action below")
+        embed.set_footer(text=f"Starlight 100-Floor Spire ({format_ng_label(self.ng_tier)}) • Choose your action below")
         return embed
 
     def _calculate_player_damage(self, player_data: dict) -> tuple[int, bool]:
@@ -121,8 +184,17 @@ class DungeonCombatView(discord.ui.View):
         return max(1, int(final_dmg))
 
     async def _handle_victory(self, interaction: discord.Interaction, player_data: dict):
-        coins_won = (120 * self.floor) + (1500 if self.is_boss else 0)
-        xp_won = (85 * self.floor) + (1000 if self.is_boss else 0)
+        mults = get_ng_multipliers(self.ng_tier)
+        current_cleared = get_tier_cleared_floor(player_data, self.ng_tier)
+        is_first_clear = self.floor > current_cleared
+
+        # Rebalanced base rewards + NG+ scaling + 60% repeat-clear multiplier to prevent floor farming inflation
+        base_coins = (45 * self.floor) + (600 if self.is_boss else 0)
+        base_xp = (35 * self.floor) + (400 if self.is_boss else 0)
+        farm_mult = 1.0 if is_first_clear else 0.60
+
+        coins_won = max(15, int(base_coins * mults["reward"] * farm_mult))
+        xp_won = max(10, int(base_xp * mults["reward"] * farm_mult))
 
         player_data["wallet"] = player_data.get("wallet", 0) + coins_won
         player_data["xp"] = player_data.get("xp", 0) + xp_won
@@ -130,9 +202,8 @@ class DungeonCombatView(discord.ui.View):
         player_data.setdefault("max_hp", 100)
         player_data.setdefault("hp", player_data["max_hp"])
 
-        current_cleared = player_data.get("dungeon_floor", 0)
-        if self.floor > current_cleared:
-            player_data["dungeon_floor"] = min(100, self.floor)
+        if is_first_clear:
+            set_tier_cleared_floor(player_data, self.ng_tier, self.floor)
 
         if self.floor <= 25:
             pool = LOOT_TABLES["tier_1"]
@@ -147,7 +218,7 @@ class DungeonCombatView(discord.ui.View):
         loot_summary = []
 
         drop_1 = random.choice(pool)
-        qty_1 = random.randint(2, 4) if self.is_boss else random.randint(1, 2)
+        qty_1 = random.randint(2, 3) if self.is_boss else 1
         inv[drop_1] = inv.get(drop_1, 0) + qty_1
         loot_summary.append(f"**{qty_1}x {drop_1.title()}**")
 
@@ -158,9 +229,18 @@ class DungeonCombatView(discord.ui.View):
 
             boss_info = BOSS_FLOORS.get(self.floor, {})
             trophy_item = boss_info.get("trophy")
-            if trophy_item:
-                inv[trophy_item] = inv.get(trophy_item, 0) + 1
+            if trophy_item and inv.get(trophy_item, 0) == 0:
+                inv[trophy_item] = 1
                 loot_summary.append(f"✨ **1x {trophy_item.title()} (Legendary Trophy)**")
+
+        # Handle Floor 100 NG+ unlock progression
+        ng_unlock_msg = ""
+        if self.floor == 100:
+            ng_unlocked = int(player_data.get("spire_ng_unlocked", 0))
+            if self.ng_tier >= ng_unlocked:
+                next_ng = self.ng_tier + 1
+                player_data["spire_ng_unlocked"] = next_ng
+                ng_unlock_msg = f"\n🔥 **NEW GAME+ UNLOCKED!** You can now challenge **NG+{next_ng}** using `/ngplus`!"
 
         xp_needed = player_data["level"] * 250
         lvl_up_text = ""
@@ -174,11 +254,13 @@ class DungeonCombatView(discord.ui.View):
 
         update_player(self.user_id, player_data)
 
-        next_floor_msg = (
-            "🏆 **CONGRATULATIONS! YOU CONQUERED FLOOR 100 OF THE STARLIGHT SPIRE!**"
-            if self.floor == 100
-            else f"🔓 **Floor {self.floor + 1}** is now unlocked!"
-        )
+        tier_label = format_ng_label(self.ng_tier)
+        if self.floor == 100:
+            next_floor_msg = f"🏆 **CONGRATULATIONS! YOU CONQUERED FLOOR 100 ({tier_label}) OF THE STARLIGHT SPIRE!**{ng_unlock_msg}"
+        elif is_first_clear:
+            next_floor_msg = f"🔓 **Floor {self.floor + 1} ({tier_label})** is now unlocked!"
+        else:
+            next_floor_msg = f"♻️ *Replay clear ({tier_label}) — 60% coin/XP yield applied.*"
 
         self.combat_log.append(f"🏆 Defeated **{self.enemy_name}**!")
         embed = self.build_combat_embed(player_data, status_color=discord.Color.green())
@@ -270,7 +352,7 @@ class DungeonCombatView(discord.ui.View):
     @discord.ui.button(label="🏃 Retreat", style=discord.ButtonStyle.secondary)
     async def retreat_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         embed = discord.Embed(
-            title=f"🏃 Retreated from Floor {self.floor}",
+            title=f"🏃 Retreated from Floor {self.floor} ({format_ng_label(self.ng_tier)})",
             description="You safely used a Teleport Crystal to exit the Starlight Spire.",
             color=discord.Color.light_grey()
         )
@@ -287,7 +369,11 @@ class DungeonsCog(commands.Cog):
         uid = str(interaction.user.id)
         player_data = get_player(uid)
 
-        highest_cleared = player_data.get("dungeon_floor", 0)
+        ng_unlocked = int(player_data.get("spire_ng_unlocked", 0))
+        ng_tier = min(int(player_data.get("spire_ng_current", 0)), ng_unlocked)
+        player_data["spire_ng_current"] = ng_tier
+
+        highest_cleared = get_tier_cleared_floor(player_data, ng_tier)
         max_accessible = min(100, highest_cleared + 1)
         target_floor = floor if floor is not None else max_accessible
 
@@ -296,7 +382,7 @@ class DungeonsCog(commands.Cog):
 
         if target_floor > max_accessible:
             return await interaction.response.send_message(
-                f"❌ Floor **{target_floor}** is locked! You must clear **Floor {max_accessible}** first.",
+                f"❌ Floor **{target_floor}** ({format_ng_label(ng_tier)}) is locked! You must clear **Floor {max_accessible}** first.",
                 ephemeral=True
             )
 
@@ -320,20 +406,26 @@ class DungeonsCog(commands.Cog):
                 del inv["dungeon key"]
             update_player(uid, player_data)
 
+        mults = get_ng_multipliers(ng_tier)
+
         if is_boss:
             boss_info = BOSS_FLOORS.get(target_floor, {"name": f"Floor {target_floor} Overlord", "title": "Boss"})
             enemy_name = f"{boss_info['name']} ({boss_info['title']})"
-            enemy_hp = 150 + (target_floor * 45)
-            enemy_atk = 14 + int(target_floor * 2.4)
+            base_hp = 150 + (target_floor * 45)
+            base_atk = 14 + int(target_floor * 2.4)
         else:
             guardian = FLOOR_GUARDIANS[(target_floor - 1) % len(FLOOR_GUARDIANS)]
             enemy_name = f"Floor {target_floor} {guardian}"
-            enemy_hp = 70 + (target_floor * 24)
-            enemy_atk = 8 + int(target_floor * 1.6)
+            base_hp = 70 + (target_floor * 24)
+            base_atk = 8 + int(target_floor * 1.6)
+
+        enemy_hp = int(base_hp * mults["hp"])
+        enemy_atk = int(base_atk * mults["atk"])
 
         view = DungeonCombatView(
             user_id=uid,
             floor=target_floor,
+            ng_tier=ng_tier,
             enemy_name=enemy_name,
             enemy_hp=enemy_hp,
             enemy_max_hp=enemy_hp,
@@ -343,16 +435,86 @@ class DungeonsCog(commands.Cog):
         embed = view.build_combat_embed(player_data)
         await interaction.response.send_message(embed=embed, view=view)
 
+    @app_commands.command(name="ngplus", description="View or switch your Starlight Spire New Game+ (NG+) difficulty tier.")
+    @app_commands.describe(tier="NG+ tier to switch to (0 = Normal, 1 = NG+1, 2 = NG+2, etc.)")
+    async def ngplus(self, interaction: discord.Interaction, tier: int = None):
+        uid = str(interaction.user.id)
+        player_data = get_player(uid)
+
+        normal_cleared = int(player_data.get("dungeon_floor", 0))
+        ng_unlocked = int(player_data.get("spire_ng_unlocked", 0))
+        ng_current = int(player_data.get("spire_ng_current", 0))
+
+        # Safety check: if normal Floor 100 was already cleared before this update, grant NG+1
+        if normal_cleared >= 100 and ng_unlocked == 0:
+            ng_unlocked = 1
+            player_data["spire_ng_unlocked"] = 1
+            update_player(uid, player_data)
+
+        if tier is not None:
+            if tier < 0:
+                return await interaction.response.send_message("❌ NG+ tier cannot be negative! Use `0` for Normal or `1+` for NG+.", ephemeral=True)
+            if tier > ng_unlocked:
+                req_tier = "Normal" if tier == 1 else f"NG+{tier - 1}"
+                return await interaction.response.send_message(
+                    f"🔒 **NG+{tier}** is locked! Defeat **Floor 100** on **{req_tier}** to unlock it.",
+                    ephemeral=True
+                )
+            player_data["spire_ng_current"] = tier
+            update_player(uid, player_data)
+            ng_current = tier
+
+        active_mults = get_ng_multipliers(ng_current)
+        tier_floor = get_tier_cleared_floor(player_data, ng_current)
+
+        embed = discord.Embed(
+            title="🔥 Starlight Spire — New Game+ (NG+)",
+            description=(
+                f"**Active Difficulty:** {format_ng_label(ng_current)} (Floor {tier_floor} / 100 cleared)\n"
+                f"**Highest Unlocked Tier:** {format_ng_label(ng_unlocked)}\n\n"
+                f"**Current Multipliers:**\n"
+                f"💥 Enemy ATK: **{active_mults['atk']}x** | ❤️ Enemy HP: **{active_mults['hp']}x** | 🪙 Rewards: **{active_mults['reward']}x**"
+            ),
+            color=discord.Color.gold()
+        )
+
+        tier_lines = []
+        max_preview = max(5, ng_unlocked + 1)
+        for t in range(0, max_preview + 1):
+            m = get_ng_multipliers(t)
+            t_cleared = get_tier_cleared_floor(player_data, t)
+            if t == ng_current:
+                state = f"▶️ Active ({t_cleared}/100)"
+            elif t <= ng_unlocked:
+                state = f"✅ Unlocked ({t_cleared}/100)"
+            else:
+                state = "🔒 Locked"
+            tier_lines.append(
+                f"**{format_ng_label(t)}** — ATK `{m['atk']}x` | HP `{m['hp']}x` | Loot `{m['reward']}x` [{state}]"
+            )
+
+        embed.add_field(name="📊 NG+ Difficulty Tiers", value="\n".join(tier_lines), inline=False)
+        embed.set_footer(text="Defeat Floor 100 to unlock the next tier • Switch anytime with /ngplus <tier>")
+        await interaction.response.send_message(embed=embed)
+
     @app_commands.command(name="tower", description="Check your 100-Floor Starlight Spire progress and upcoming Boss Floors.")
     async def tower(self, interaction: discord.Interaction):
         uid = str(interaction.user.id)
         player_data = get_player(uid)
-        cleared = player_data.get("dungeon_floor", 0)
+
+        ng_unlocked = int(player_data.get("spire_ng_unlocked", 0))
+        ng_current = min(int(player_data.get("spire_ng_current", 0)), ng_unlocked)
+        cleared = get_tier_cleared_floor(player_data, ng_current)
         next_floor = min(100, cleared + 1)
 
         embed = discord.Embed(
-            title="🏰 Starlight Spire — 100-Floor Progress",
-            description=f"**Highest Cleared Floor:** Floor {cleared} / 100\n**Next Floor to Challenge:** Floor {next_floor}\n\n*Every 10th floor is a Boss Room requiring 1x Dungeon Key.*",
+            title=f"🏰 Starlight Spire — 100-Floor Progress ({format_ng_label(ng_current)})",
+            description=(
+                f"**Active Mode:** {format_ng_label(ng_current)} (Unlocked up to {format_ng_label(ng_unlocked)})\n"
+                f"**Highest Cleared Floor:** Floor {cleared} / 100\n"
+                f"**Next Floor to Challenge:** Floor {next_floor}\n\n"
+                f"*Every 10th floor is a Boss Room requiring 1x Dungeon Key. Switch tiers via `/ngplus`.*"
+            ),
             color=discord.Color.purple()
         )
 
@@ -362,7 +524,7 @@ class DungeonsCog(commands.Cog):
             boss_lines.append(f"**Floor {f_num}:** {b_data['name']} [{status}]")
 
         embed.add_field(name="👑 Spire Floor Bosses", value="\n".join(boss_lines), inline=False)
-        embed.set_footer(text="Use /dungeon to climb the tower!")
+        embed.set_footer(text="Use /dungeon to climb the tower • Use /ngplus to manage NG+ tiers!")
         await interaction.response.send_message(embed=embed)
 
 
