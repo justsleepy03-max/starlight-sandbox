@@ -39,6 +39,7 @@ class StarlightBot(commands.Bot):
         "help_cog",  # Added interactive /help button menu cog!
         "custom_bundle_cog",  # Added owner-only /custombundle, /setcustombundle & /listcustombundles cog!
         "release_scheduler_cog",  # Scheduled releases cog (Dec 4, 2026 @ 10:00 AM GMT)
+        "admin_cog",  # Added owner-only /wipe command with confirmation & backup!
     ]
 
     for ext in extensions:
