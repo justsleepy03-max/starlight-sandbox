@@ -1,7 +1,10 @@
+from datetime import datetime, timezone
 import json
 import os
+import shutil
 
 DATA_DIR = "/app/data"
+BACKUP_DIR = os.path.join(DATA_DIR, "backups")
 DATA_FILE = os.path.join(DATA_DIR, "rpg_data.json")
 TEMP_FILE = os.path.join(DATA_DIR, "rpg_data.json.tmp")
 
@@ -43,6 +46,11 @@ def ensure_player_defaults(player):
     player.setdefault("xp", 0)
     player.setdefault("area", 1)
 
+    # Spire & NG+ progression fields
+    player.setdefault("spire_floor", 1)
+    player.setdefault("spire_ng_unlocked", 0)
+    player.setdefault("spire_ng_current", 0)
+
     if not isinstance(player.get("inventory"), dict):
         player["inventory"] = {}
     if not isinstance(player.get("cooldowns"), dict):
@@ -69,6 +77,9 @@ def get_player(user_id):
             "level": 1,
             "xp": 0,
             "area": 1,
+            "spire_floor": 1,
+            "spire_ng_unlocked": 0,
+            "spire_ng_current": 0,
             "inventory": {},
             "equipment": dict(DEFAULT_EQUIPMENT),
             "cooldowns": {},
@@ -95,3 +106,33 @@ def get_all_players():
         if isinstance(player, dict):
             all_players[str(uid)] = ensure_player_defaults(dict(player))
     return all_players
+
+
+def backup_data():
+    """Creates a timestamped backup of rpg_data.json before destructive actions."""
+    if not os.path.exists(DATA_FILE):
+        return None
+    os.makedirs(BACKUP_DIR, exist_ok=True)
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    backup_path = os.path.join(BACKUP_DIR, f"rpg_data_backup_{timestamp}.json")
+    shutil.copy2(DATA_FILE, backup_path)
+    return backup_path
+
+
+def wipe_all_players():
+    """Backs up current data, resets all player profiles to fresh starter defaults, and returns (wiped_count, backup_path)."""
+    backup_path = backup_data()
+    data = load_data()
+
+    wiped_count = 0
+    new_data = {}
+    for uid, profile in data.items():
+        if isinstance(profile, dict):
+            new_data[str(uid)] = ensure_player_defaults({})
+            wiped_count += 1
+        else:
+            # Preserve any non-player metadata keys if they exist
+            new_data[str(uid)] = profile
+
+    save_data(new_data)
+    return wiped_count, backup_path
