@@ -198,3 +198,83 @@ class PotionSelect(discord.ui.Select):
 class PotionSelectView(discord.ui.View):
     def __init__(
         self,
+        combat_view: "DungeonCombatView",
+        main_message: discord.Message,
+        owned_potions: list[tuple[str, int]],
+    ):
+        super().__init__(timeout=60)
+        self.add_item(PotionSelect(combat_view, main_message, owned_potions))
+
+
+class DungeonCombatView(discord.ui.View):
+    def __init__(
+        self,
+        user_id: str,
+        floor: int,
+        ng_tier: int,
+        enemy_name: str,
+        enemy_hp: int,
+        enemy_max_hp: int,
+        enemy_atk: int,
+        is_boss: bool,
+    ):
+        super().__init__(timeout=180)
+        self.user_id = user_id
+        self.floor = floor
+        self.ng_tier = ng_tier
+        self.enemy_name = enemy_name
+        self.enemy_hp = enemy_hp
+        self.enemy_max_hp = enemy_max_hp
+        self.enemy_atk = enemy_atk
+        self.is_boss = is_boss
+        tier_tag = f" [{format_ng_label(ng_tier)}]" if ng_tier > 0 else ""
+        self.combat_log = [f"⚔️ **Floor {floor}{tier_tag}** battle started against **{enemy_name}**!"]
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if str(interaction.user.id) != self.user_id:
+            await interaction.response.send_message("❌ This isn't your dungeon run! Start your own with `/dungeon`.", ephemeral=True)
+            return False
+        return True
+
+    def build_combat_embed(self, player_data: dict, status_color=discord.Color.red()) -> discord.Embed:
+        p_max_hp = player_data.get("max_hp", 100)
+        p_hp = max(0, player_data.get("hp", p_max_hp))
+        inv = player_data.get("inventory", {})
+        potions = sum(inv.get(potion_key, 0) for potion_key in HEALING_POTIONS)
+        sword_tier = player_data.get("sword_tier", 1)
+        armor_tier = player_data.get("armor_tier", 1)
+
+        title_prefix = "👑 BOSS FLOOR" if self.is_boss else "🏰 TOWER FLOOR"
+        tier_badge = f" [{format_ng_label(self.ng_tier)}]" if self.ng_tier > 0 else ""
+        embed = discord.Embed(
+            title=f"{title_prefix} {self.floor}{tier_badge} — {self.enemy_name}",
+            color=status_color
+        )
+        embed.add_field(
+            name=f"👹 {self.enemy_name}",
+            value=f"❤️ **HP:** {max(0, self.enemy_hp):,} / {self.enemy_max_hp:,}\n💥 **ATK:** ~{self.enemy_atk:,}",
+            inline=True
+        )
+        embed.add_field(
+            name="🛡️ Your Status",
+            value=f"❤️ **HP:** {p_hp:,} / {p_max_hp:,}\n⚔️ **Sword:** Tier {sword_tier} | 🛡️ **Armor:** Tier {armor_tier}\n🧪 **Potions:** {potions}",
+            inline=True
+        )
+        recent_logs = "\n".join(self.combat_log[-4:])
+        embed.add_field(name="📜 Combat Log", value=recent_logs, inline=False)
+        embed.set_footer(text=f"Starlight 100-Floor Spire ({format_ng_label(self.ng_tier)}) • Choose your action below")
+        return embed
+
+    def _calculate_player_damage(self, player_data: dict) -> tuple[int, bool]:
+        level = player_data.get("level", 1)
+        sword_tier = player_data.get("sword_tier", 1)
+        pet_mult = get_pet_combat_bonus(self.user_id)
+
+        base_dmg = (18 + (level * 4) + (sword_tier * 22)) * pet_mult
+        is_crit = random.random() < 0.20
+        dmg = int(base_dmg * random.uniform(0.85, 1.15) * (1.6 if is_crit else 1.0))
+        return max(5, dmg), is_crit
+
+    def _calculate_enemy_damage(self, player_data: dict, guarding: bool = False) -> int:
+        armor_tier = player_data.get("armor_tier", 1)
+        reduction = min(0.60, armor_tier * 0.05)
