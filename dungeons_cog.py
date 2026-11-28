@@ -218,12 +218,13 @@ class DungeonCombatView(discord.ui.View):
             name="🛡️ Your Status",
             value=f"❤️ **HP:** {p_hp:,} / {p_max_hp:,}\n⚔️ **Sword:** Tier {sword_tier} | 🛡️ **Armor:** Tier {armor_tier}\n🧪 **Potions:** {potions}",
             inline=True
-        )
-            recent_logs = "\n".join(self.combat_log[-4:])
+       )
+        recent_logs = "\n".join(self.combat_log[-4:])
         embed.add_field(name="📜 Combat Log", value=recent_logs, inline=False)
         embed.set_footer(text=f"Starlight 100-Floor Spire ({format_ng_label(self.ng_tier)}) • Choose your action below")
         return embed
-            def _calculate_player_damage(self, player_data: dict) -> tuple[int, bool]:
+
+    def _calculate_player_damage(self, player_data: dict) -> tuple[int, bool]:
         level = player_data.get("level", 1)
         sword_tier = player_data.get("sword_tier", 1)
         pet_mult = get_pet_combat_bonus(self.user_id)
