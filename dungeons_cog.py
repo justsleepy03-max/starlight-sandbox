@@ -410,7 +410,7 @@ class DungeonCombatView(discord.ui.View):
             color=discord.Color.light_grey()
         )
         await interaction.response.edit_message(embed=embed, view=None)
-        class DungeonsCog(commands.Cog):
+class DungeonsCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
