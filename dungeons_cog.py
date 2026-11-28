@@ -52,6 +52,90 @@ BOSS_FLOORS = {
     100: {"name": "Anincrad, Sovereign of the Starlight Spire", "title": "100th Floor Final Boss", "trophy": "elucidator"}
 }
 
+# Boss weapons exclusive to NG+ Tiers 1-5; stats scale with NG+ tier (1 to 5)
+NGPLUS_BOSS_WEAPONS = {
+    10: {
+        "id": "fang_of_illfang",
+        "name": "Illfang's Fang",
+        "base_atk": 25,
+        "atk_per_tier": 25,       # NG+1: 50 ... NG+5: 150
+        "crit_per_tier": 0.02,      # NG+1: +2% ... NG+5: +10%
+        "base_chance": 0.45,
+    },
+    20: {
+        "id": "taurus_cleaver",
+        "name": "Taurus King's Cleaver",
+        "base_atk": 35,
+        "atk_per_tier": 30,
+        "crit_per_tier": 0.02,
+        "base_chance": 0.45,
+    },
+    30: {
+        "id": "nerius_thornblade",
+        "name": "Nerius's Thornblade",
+        "base_atk": 45,
+        "atk_per_tier": 35,
+        "crit_per_tier": 0.025,
+        "base_chance": 0.45,
+    },
+    40: {
+        "id": "obsidian_reaver_edge",
+        "name": "Obsidian Reaver Edge",
+        "base_atk": 55,
+        "atk_per_tier": 40,
+        "crit_per_tier": 0.025,
+        "base_chance": 0.45,
+    },
+    50: {
+        "id": "crimson_paladin_lance",
+        "name": "Crimson Paladin's Lance",
+        "base_atk": 70,
+        "atk_per_tier": 45,
+        "crit_per_tier": 0.03,
+        "base_chance": 0.50,
+    },
+    60: {
+        "id": "gleam_eye_fang",
+        "name": "Gleam Eyes' Twinfang",
+        "base_atk": 85,
+        "atk_per_tier": 50,
+        "crit_per_tier": 0.03,
+        "base_chance": 0.50,
+    },
+    70: {
+        "id": "reaper_scythe_shard",
+        "name": "Skull Reaper's Soulscythe",
+        "base_atk": 100,
+        "atk_per_tier": 55,
+        "crit_per_tier": 0.035,
+        "base_chance": 0.50,
+    },
+    80: {
+        "id": "chronos_riftblade",
+        "name": "Chronos's Riftblade",
+        "base_atk": 115,
+        "atk_per_tier": 60,
+        "crit_per_tier": 0.035,
+        "base_chance": 0.55,
+    },
+    90: {
+        "id": "seraphim_wingblade",
+        "name": "Celestial Seraphim's Wingblade",
+        "base_atk": 135,
+        "atk_per_tier": 70,
+        "crit_per_tier": 0.04,
+        "base_chance": 0.55,
+    },
+    100: {
+        "id": "anincrad_sovereign_greatsword",
+        "name": "Anincrad's Sovereign Greatsword",
+        "base_atk": 160,
+        "atk_per_tier": 85,
+        "crit_per_tier": 0.05,
+        "base_chance": 0.65,
+    },
+}
+
 LOOT_TABLES = {
     "tier_1": ["soft bark", "ancient stone", "river pearl", "life potion", "common lootbox", "common egg"],
     "tier_2": ["sweet nectar", "crystal shard", "shadow petal", "uncommon lootbox", "dungeon key", "seed"],
@@ -68,6 +152,85 @@ NG_PLUS_SCALING = {
     4: {"atk": 2.55, "hp": 2.30, "reward": 1.90},
     5: {"atk": 3.00, "hp": 2.75, "reward": 2.15},
 }
+
+
+def get_boss_weapon_stats(weapon_cfg: dict, ng_tier: int) -> dict:
+    """Computes scaled ATK and crit bonus for NG+ Tiers 1-5."""
+    tier_1_to_5 = max(1, min(5, int(ng_tier)))
+    atk = weapon_cfg["base_atk"] + (weapon_cfg["atk_per_tier"] * tier_1_to_5)
+    crit_bonus = round(weapon_cfg["crit_per_tier"] * tier_1_to_5, 4)
+    return {
+        "ng_tier": tier_1_to_5,
+        "atk": atk,
+        "crit_bonus": crit_bonus,
+    }
+
+
+def get_equipped_boss_weapon(player_data: dict) -> dict | None:
+    """Returns the currently equipped boss weapon dict (with scaled stats) or None."""
+    owned = player_data.get("boss_weapons", {})
+    if not isinstance(owned, dict) or not owned:
+        return None
+
+    equipped_id = player_data.get("equipped_boss_weapon")
+    weapon = owned.get(equipped_id) if equipped_id else None
+
+    if not isinstance(weapon, dict):
+        # Fallback to highest-ATK owned boss weapon
+        weapon = max(
+            (w for w in owned.values() if isinstance(w, dict)),
+            key=lambda w: w.get("atk", 0),
+            default=None,
+        )
+    return weapon
+
+
+def roll_ngplus_boss_weapon(player_data: dict, floor: int, ng_tier: int) -> str | None:
+    """
+    Rolls a boss weapon drop for NG+ Tiers 1-5 on boss floors.
+    Scales weapon stats to the NG+ tier (1-5) and preserves highest unlocked NG+ tier.
+    """
+    if ng_tier < 1 or ng_tier > 5:
+        return None
+
+    weapon_cfg = NGPLUS_BOSS_WEAPONS.get(floor)
+    if not weapon_cfg:
+        return None
+
+    # Slightly higher drop chance on higher NG+ tiers (1-5)
+    chance = min(0.95, weapon_cfg["base_chance"] + ((ng_tier - 1) * 0.05))
+    if random.random() > chance:
+        return None
+
+    owned = player_data.setdefault("boss_weapons", {})
+    w_id = weapon_cfg["id"]
+    existing = owned.get(w_id, {})
+    prev_tier = int(existing.get("ng_tier", 0) or 0)
+    new_tier = max(prev_tier, ng_tier)
+
+    stats = get_boss_weapon_stats(weapon_cfg, new_tier)
+    owned[w_id] = {
+        "id": w_id,
+        "name": weapon_cfg["name"],
+        "floor": floor,
+        "ng_tier": new_tier,
+        "atk": stats["atk"],
+        "crit_bonus": stats["crit_bonus"],
+    }
+
+    current_eq = get_equipped_boss_weapon(player_data)
+    if not current_eq or stats["atk"] >= int(current_eq.get("atk", 0) or 0):
+        player_data["equipped_boss_weapon"] = w_id
+
+    crit_pct = int(round(stats["crit_bonus"] * 100))
+    if prev_tier == 0:
+        tag = " *(New Boss Weapon!)*"
+    elif new_tier > prev_tier:
+        tag = f" *(Upgraded from NG+{prev_tier}!)*"
+    else:
+        tag = f" *(Kept NG+{prev_tier} Tier)*"
+
+    return f"🗡️ **{weapon_cfg['name']} [NG+{new_tier}]** (+{stats['atk']} ATK, +{crit_pct}% Crit){tag}"
 
 
 def get_ng_multipliers(ng_tier: int) -> dict:
@@ -270,6 +433,11 @@ class DungeonCombatView(discord.ui.View):
         potions = sum(qty for _, qty in get_owned_potions(player_data))
         sword_tier = player_data.get("sword_tier", 1)
         armor_tier = player_data.get("armor_tier", 1)
+        eq_boss_wep = get_equipped_boss_weapon(player_data)
+        boss_wep_line = (
+            f"\n🗡️ **Boss Wep:** {eq_boss_wep['name']} [NG+{eq_boss_wep.get('ng_tier', 1)}] (+{eq_boss_wep.get('atk', 0)} ATK)"
+            if eq_boss_wep else ""
+        )
 
         title_prefix = "👑 BOSS FLOOR" if self.is_boss else "🏰 TOWER FLOOR"
         tier_badge = f" [{format_ng_label(self.ng_tier)}]" if self.ng_tier > 0 else ""
@@ -284,7 +452,7 @@ class DungeonCombatView(discord.ui.View):
         )
         embed.add_field(
             name="🛡️ Your Status",
-            value=f"❤️ **HP:** {p_hp:,} / {p_max_hp:,}\n⚔️ **Sword:** Tier {sword_tier} | 🛡️ **Armor:** Tier {armor_tier}\n🧪 **Potions:** {potions}",
+            value=f"❤️ **HP:** {p_hp:,} / {p_max_hp:,}\n⚔️ **Sword:** Tier {sword_tier} | 🛡️ **Armor:** Tier {armor_tier}{boss_wep_line}\n🧪 **Potions:** {potions}",
             inline=True
         )
         recent_logs = "\n".join(self.combat_log[-4:])
@@ -296,9 +464,14 @@ class DungeonCombatView(discord.ui.View):
         level = player_data.get("level", 1)
         sword_tier = player_data.get("sword_tier", 1)
         pet_mult = get_pet_combat_bonus(self.user_id)
+        eq_boss_wep = get_equipped_boss_weapon(player_data)
 
-        base_dmg = (18 + (level * 4) + (sword_tier * 22)) * pet_mult
-        is_crit = random.random() < 0.20
+        boss_wep_atk = int(eq_boss_wep.get("atk", 0) or 0) if eq_boss_wep else 0
+        crit_bonus = float(eq_boss_wep.get("crit_bonus", 0.0) or 0.0) if eq_boss_wep else 0.0
+
+        base_dmg = (18 + (level * 4) + (sword_tier * 22) + boss_wep_atk) * pet_mult
+        crit_chance = min(0.75, 0.20 + crit_bonus)
+        is_crit = random.random() < crit_chance
         dmg = int(base_dmg * random.uniform(0.85, 1.15) * (1.6 if is_crit else 1.0))
         return max(5, dmg), is_crit
 
@@ -353,6 +526,10 @@ class DungeonCombatView(discord.ui.View):
             bonus_drop = random.choice(LOOT_TABLES["tier_3"] if self.floor < 60 else LOOT_TABLES["tier_4"])
             inv[bonus_drop] = inv.get(bonus_drop, 0) + 1
             loot_summary.append(f"**1x {bonus_drop.title()}**")
+
+            boss_wep_msg = roll_ngplus_boss_weapon(player_data, self.floor, self.ng_tier)
+            if boss_wep_msg:
+                loot_summary.append(boss_wep_msg)
 
             boss_info = BOSS_FLOORS.get(self.floor, {})
             trophy_item = boss_info.get("trophy")
