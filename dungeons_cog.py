@@ -123,18 +123,19 @@ def get_pet_combat_bonus(user_id: str) -> float:
 
 
 class PotionSelect(discord.ui.Select):
-    def __init__(self, combat_view: "DungeonCombatView", main_message: discord.Message, owned_potions: list[tuple[str, int]]):
+    def __init__(self, combat_view, main_message, owned_potions):
         self.combat_view = combat_view
         self.main_message = main_message
-        options = [
-            discord.SelectOption(
-                label=f"{HEALING_POTIONS[key]['name']} (x{qty})",
+        options = []
+        for key, qty in owned_potions[:25]:
+            meta = HEALING_POTIONS[key]
+            opt = discord.SelectOption(
+                label=f"{meta['name']} (x{qty})",
                 value=key,
-                description=HEALING_POTIONS[key]["desc"],
-                emoji="🧪",
+                description=meta["desc"],
+                emoji="🧪"
             )
-            for key, qty in owned_potions[:25]
-        ]
+            options.append(opt)
         super().__init__(placeholder="Select a potion to use...", min_values=1, max_values=1, options=options)
 
     async def callback(self, interaction: discord.Interaction):
@@ -144,10 +145,11 @@ class PotionSelect(discord.ui.Select):
         inv = player_data.setdefault("inventory", {})
 
         if inv.get(key, 0) < 1:
-            return await interaction.response.edit_message(
+            await interaction.response.edit_message(
                 content=f"❌ You don't have any **{meta['name']}** left in your bag!",
-                view=None,
+                view=None
             )
+            return
 
         inv[key] -= 1
         if inv[key] <= 0:
@@ -165,7 +167,7 @@ class PotionSelect(discord.ui.Select):
 
 
 class PotionSelectView(discord.ui.View):
-    def __init__(self, combat_view: "DungeonCombatView", main_message: discord.Message, owned_potions: list[tuple[str, int]]):
+    def __init__(self, combat_view, main_message, owned_potions):
         super().__init__(timeout=60)
         self.add_item(PotionSelect(combat_view, main_message, owned_potions))
 
@@ -205,4 +207,175 @@ class DungeonCombatView(discord.ui.View):
         p_hp = max(0, player_data.get("hp", p_max_hp))
         inv = player_data.get("inventory", {})
         potions = sum(inv.get(k, 0) for k in HEALING_POTIONS)
-        sword_tier = player_data.get("sword_tier",
+        sword_tier = player_data.get("sword_tier", 1)
+        armor_tier = player_data.get("armor_tier", 1)
+
+        title_prefix = "👑 BOSS FLOOR" if self.is_boss else "🏰 TOWER FLOOR"
+        tier_badge = f" [{format_ng_label(self.ng_tier)}]" if self.ng_tier > 0 else ""
+        embed = discord.Embed(
+            title=f"{title_prefix} {self.floor}{tier_badge} — {self.enemy_name}",
+            color=status_color
+        )
+        embed.add_field(
+            name=f"👹 {self.enemy_name}",
+            value=f"❤️ **HP:** {max(0, self.enemy_hp):,} / {self.enemy_max_hp:,}\n💥 **ATK:** ~{self.enemy_atk:,}",
+            inline=True
+        )
+        embed.add_field(
+            name="🛡️ Your Status",
+            value=f"❤️ **HP:** {p_hp:,} / {p_max_hp:,}\n⚔️ **Sword:** Tier {sword_tier} | 🛡️ **Armor:** Tier {armor_tier}\n🧪 **Potions:** {potions}",
+            inline=True
+        )
+        recent_logs = "\n".join(self.combat_log[-4:])
+        embed.add_field(name="📜 Combat Log", value=recent_logs, inline=False)
+        embed.set_footer(text=f"Starlight 100-Floor Spire ({format_ng_label(self.ng_tier)}) • Choose your action below")
+        return embed
+
+    def _calculate_player_damage(self, player_data: dict) -> tuple[int, bool]:
+        level = player_data.get("level", 1)
+        sword_tier = player_data.get("sword_tier", 1)
+        pet_mult = get_pet_combat_bonus(self.user_id)
+
+        base_dmg = (18 + (level * 4) + (sword_tier * 22)) * pet_mult
+        is_crit = random.random() < 0.20
+        dmg = int(base_dmg * random.uniform(0.85, 1.15) * (1.6 if is_crit else 1.0))
+        return max(5, dmg), is_crit
+
+    def _calculate_enemy_damage(self, player_data: dict, guarding: bool = False) -> int:
+        armor_tier = player_data.get("armor_tier", 1)
+        reduction = min(0.60, armor_tier * 0.05)  # Up to 60% reduction at Tier 12 armor
+        raw_dmg = self.enemy_atk * random.uniform(0.80, 1.20)
+        final_dmg = raw_dmg * (1.0 - reduction)
+        if guarding:
+            final_dmg *= 0.35
+        return max(1, int(final_dmg))
+
+    async def _handle_victory(self, interaction: discord.Interaction, player_data: dict):
+        mults = get_ng_multipliers(self.ng_tier)
+        current_cleared = get_tier_cleared_floor(player_data, self.ng_tier)
+        is_first_clear = self.floor > current_cleared
+
+        # Rebalanced base rewards + NG+ scaling + 60% repeat-clear multiplier to prevent floor farming inflation
+        base_coins = (45 * self.floor) + (600 if self.is_boss else 0)
+        base_xp = (35 * self.floor) + (400 if self.is_boss else 0)
+        farm_mult = 1.0 if is_first_clear else 0.60
+
+        coins_won = max(15, int(base_coins * mults["reward"] * farm_mult))
+        xp_won = max(10, int(base_xp * mults["reward"] * farm_mult))
+
+        player_data["wallet"] = player_data.get("wallet", 0) + coins_won
+        player_data["xp"] = player_data.get("xp", 0) + xp_won
+        player_data.setdefault("level", 1)
+        player_data.setdefault("max_hp", 100)
+        player_data.setdefault("hp", player_data["max_hp"])
+
+        if is_first_clear:
+            set_tier_cleared_floor(player_data, self.ng_tier, self.floor)
+
+        if self.floor <= 25:
+            pool = LOOT_TABLES["tier_1"]
+        elif self.floor <= 50:
+            pool = LOOT_TABLES["tier_2"]
+        elif self.floor <= 75:
+            pool = LOOT_TABLES["tier_3"]
+        else:
+            pool = LOOT_TABLES["tier_4"]
+
+        inv = player_data.setdefault("inventory", {})
+        loot_summary = []
+
+        drop_1 = random.choice(pool)
+        qty_1 = random.randint(2, 3) if self.is_boss else 1
+        inv[drop_1] = inv.get(drop_1, 0) + qty_1
+        loot_summary.append(f"**{qty_1}x {drop_1.title()}**")
+
+        if self.is_boss:
+            bonus_drop = random.choice(LOOT_TABLES["tier_3"] if self.floor < 60 else LOOT_TABLES["tier_4"])
+            inv[bonus_drop] = inv.get(bonus_drop, 0) + 1
+            loot_summary.append(f"**1x {bonus_drop.title()}**")
+
+            boss_info = BOSS_FLOORS.get(self.floor, {})
+            trophy_item = boss_info.get("trophy")
+            if trophy_item and inv.get(trophy_item, 0) == 0:
+                inv[trophy_item] = 1
+                loot_summary.append(f"✨ **1x {trophy_item.title()} (Legendary Trophy)**")
+
+        # Handle Floor 100 NG+ unlock progression
+        ng_unlock_msg = ""
+        if self.floor == 100:
+            ng_unlocked = int(player_data.get("spire_ng_unlocked", 0))
+            if self.ng_tier >= ng_unlocked:
+                next_ng = self.ng_tier + 1
+                player_data["spire_ng_unlocked"] = next_ng
+                ng_unlock_msg = f"\n🔥 **NEW GAME+ UNLOCKED!** You can now challenge **NG+{next_ng}** using `/ngplus`!"
+
+        xp_needed = player_data["level"] * 250
+        lvl_up_text = ""
+        while player_data["xp"] >= xp_needed:
+            player_data["xp"] -= xp_needed
+            player_data["level"] += 1
+            player_data["max_hp"] += 20
+            player_data["hp"] = player_data["max_hp"]
+            lvl_up_text = f"\n🎉 **LEVEL UP!** You reached **Level {player_data['level']}**!"
+            xp_needed = player_data["level"] * 250
+
+        update_player(self.user_id, player_data)
+
+        tier_label = format_ng_label(self.ng_tier)
+        if self.floor == 100:
+            next_floor_msg = f"🏆 **CONGRATULATIONS! YOU CONQUERED FLOOR 100 ({tier_label}) OF THE STARLIGHT SPIRE!**{ng_unlock_msg}"
+        elif is_first_clear:
+            next_floor_msg = f"🔓 **Floor {self.floor + 1} ({tier_label})** is now unlocked!"
+        else:
+            next_floor_msg = f"♻️ *Replay clear ({tier_label}) — 60% coin/XP yield applied.*"
+
+        self.combat_log.append(f"🏆 Defeated **{self.enemy_name}**!")
+        embed = self.build_combat_embed(player_data, status_color=discord.Color.green())
+        embed.add_field(
+            name="🎁 Floor Clear Rewards",
+            value=f"🪙 **+{coins_won:,} coins** | ⭐ **+{xp_won:,} XP**\n📦 **Loot:** {', '.join(loot_summary)}\n{next_floor_msg}{lvl_up_text}",
+            inline=False
+        )
+        await interaction.response.edit_message(embed=embed, view=None)
+
+    async def _handle_defeat(self, interaction: discord.Interaction, player_data: dict):
+        player_data["hp"] = max(25, int(player_data.get("max_hp", 100) * 0.25))
+        update_player(self.user_id, player_data)
+
+        self.combat_log.append(f"💀 You were defeated by **{self.enemy_name}** and warped out of the spire!")
+        embed = self.build_combat_embed(player_data, status_color=discord.Color.dark_red())
+        embed.add_field(
+            name="💫 Emergency Warp",
+            value="You were teleported back to safety with 25% HP. Upgrade your gear with `/craft` or stock up on Life Potions in `/shop`!",
+            inline=False
+        )
+        await interaction.response.edit_message(embed=embed, view=None)
+
+    @discord.ui.button(label="⚔️ Strike", style=discord.ButtonStyle.danger)
+    async def strike_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        player_data = get_player(self.user_id)
+        player_data.setdefault("max_hp", 100)
+        player_data.setdefault("hp", player_data["max_hp"])
+
+        dmg, is_crit = self._calculate_player_damage(player_data)
+        self.enemy_hp -= dmg
+
+        crit_tag = " 💥 **CRIT!**" if is_crit else ""
+        self.combat_log.append(f"⚔️ You struck **{self.enemy_name}** for **{dmg:,}** damage!{crit_tag}")
+
+        if self.enemy_hp <= 0:
+            return await self._handle_victory(interaction, player_data)
+
+        enemy_dmg = self._calculate_enemy_damage(player_data, guarding=False)
+        player_data["hp"] -= enemy_dmg
+        self.combat_log.append(f"👹 **{self.enemy_name}** counter-attacked for **{enemy_dmg:,}** damage!")
+
+        if player_data["hp"] <= 0:
+            return await self._handle_defeat(interaction, player_data)
+
+        update_player(self.user_id, player_data)
+        await interaction.response.edit_message(embed=self.build_combat_embed(player_data), view=self)
+
+    @discord.ui.button(label="🛡️ Guard", style=discord.ButtonStyle.primary)
+    async def guard_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        player_data = get_player(self.
