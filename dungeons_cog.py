@@ -16,7 +16,7 @@ HEALING_POTIONS = {
         "min_heal": 35,
         "desc": "Restores 50% Max HP (min 35)",
     },
-    # Add additional shop/crafted potion keys here, e.g.:
+    # Add other bought/crafted potion keys here as needed:
     # "greater life potion": {
     #     "name": "Greater Life Potion",
     #     "pct": 0.75,
@@ -123,58 +123,35 @@ def get_pet_combat_bonus(user_id: str) -> float:
 
 
 class PotionSelect(discord.ui.Select):
-    def __init__(
-        self,
-        combat_view: "DungeonCombatView",
-        main_message: discord.Message,
-        owned_potions: list[tuple[str, int]],
-    ):
+    def __init__(self, combat_view: "DungeonCombatView", main_message: discord.Message, owned_potions: list[tuple[str, int]]):
         self.combat_view = combat_view
         self.main_message = main_message
-
-        options = []
-        for item_key, qty in owned_potions[:25]:
-            meta = HEALING_POTIONS[item_key]
-            options.append(
-                discord.SelectOption(
-                    label=f"{meta['name']} (x{qty})",
-                    value=item_key,
-                    description=meta["desc"][:100],
-                    emoji="🧪",
-                )
+        options = [
+            discord.SelectOption(
+                label=f"{HEALING_POTIONS[key]['name']} (x{qty})",
+                value=key,
+                description=HEALING_POTIONS[key]["desc"],
+                emoji="🧪",
             )
-
-        super().__init__(
-            placeholder="Select a potion to drink...",
-            min_values=1,
-            max_values=1,
-            options=options,
-        )
+            for key, qty in owned_potions[:25]
+        ]
+        super().__init__(placeholder="Select a potion to use...", min_values=1, max_values=1, options=options)
 
     async def callback(self, interaction: discord.Interaction):
-        if str(interaction.user.id) != self.combat_view.user_id:
-            return await interaction.response.send_message(
-                "❌ This isn't your dungeon run!",
-                ephemeral=True,
-            )
-
-        item_key = self.values[0]
-        meta = HEALING_POTIONS.get(item_key)
-        if not meta:
-            return await interaction.response.edit_message(content="❌ Unknown potion selection.", view=None)
-
+        key = self.values[0]
+        meta = HEALING_POTIONS[key]
         player_data = get_player(self.combat_view.user_id)
         inv = player_data.setdefault("inventory", {})
 
-        if inv.get(item_key, 0) < 1:
+        if inv.get(key, 0) < 1:
             return await interaction.response.edit_message(
                 content=f"❌ You don't have any **{meta['name']}** left in your bag!",
                 view=None,
             )
 
-        inv[item_key] -= 1
-        if inv[item_key] <= 0:
-            del inv[item_key]
+        inv[key] -= 1
+        if inv[key] <= 0:
+            del inv[key]
 
         max_hp = player_data.get("max_hp", 100)
         cur_hp = player_data.get("hp", max_hp)
@@ -182,26 +159,13 @@ class PotionSelect(discord.ui.Select):
         player_data["hp"] = min(max_hp, cur_hp + heal_amt)
         update_player(self.combat_view.user_id, player_data)
 
-        self.combat_view.combat_log.append(
-            f"🧪 You drank a **{meta['name']}** and restored **{heal_amt:,} HP**!"
-        )
-        await self.main_message.edit(
-            embed=self.combat_view.build_combat_embed(player_data),
-            view=self.combat_view,
-        )
-        await interaction.response.edit_message(
-            content=f"✅ Drank **{meta['name']}** and restored **{heal_amt:,} HP**!",
-            view=None,
-        )
+        self.combat_view.combat_log.append(f"🧪 You drank a **{meta['name']}** and restored **{heal_amt:,} HP**!")
+        await self.main_message.edit(embed=self.combat_view.build_combat_embed(player_data), view=self.combat_view)
+        await interaction.response.edit_message(content=f"✅ Used **{meta['name']}** (+{heal_amt:,} HP)!", view=None)
 
 
 class PotionSelectView(discord.ui.View):
-    def __init__(
-        self,
-        combat_view: "DungeonCombatView",
-        main_message: discord.Message,
-        owned_potions: list[tuple[str, int]],
-    ):
+    def __init__(self, combat_view: "DungeonCombatView", main_message: discord.Message, owned_potions: list[tuple[str, int]]):
         super().__init__(timeout=60)
         self.add_item(PotionSelect(combat_view, main_message, owned_potions))
 
@@ -240,41 +204,5 @@ class DungeonCombatView(discord.ui.View):
         p_max_hp = player_data.get("max_hp", 100)
         p_hp = max(0, player_data.get("hp", p_max_hp))
         inv = player_data.get("inventory", {})
-        potions = sum(inv.get(potion_key, 0) for potion_key in HEALING_POTIONS)
-        sword_tier = player_data.get("sword_tier", 1)
-        armor_tier = player_data.get("armor_tier", 1)
-
-        title_prefix = "👑 BOSS FLOOR" if self.is_boss else "🏰 TOWER FLOOR"
-        tier_badge = f" [{format_ng_label(self.ng_tier)}]" if self.ng_tier > 0 else ""
-        embed = discord.Embed(
-            title=f"{title_prefix} {self.floor}{tier_badge} — {self.enemy_name}",
-            color=status_color
-        )
-        embed.add_field(
-            name=f"👹 {self.enemy_name}",
-            value=f"❤️ **HP:** {max(0, self.enemy_hp):,} / {self.enemy_max_hp:,}\n💥 **ATK:** ~{self.enemy_atk:,}",
-            inline=True
-        )
-        embed.add_field(
-            name="🛡️ Your Status",
-            value=f"❤️ **HP:** {p_hp:,} / {p_max_hp:,}\n⚔️ **Sword:** Tier {sword_tier} | 🛡️ **Armor:** Tier {armor_tier}\n🧪 **Potions:** {potions}",
-            inline=True
-        )
-        recent_logs = "\n".join(self.combat_log[-4:])
-        embed.add_field(name="📜 Combat Log", value=recent_logs, inline=False)
-        embed.set_footer(text=f"Starlight 100-Floor Spire ({format_ng_label(self.ng_tier)}) • Choose your action below")
-        return embed
-
-    def _calculate_player_damage(self, player_data: dict) -> tuple[int, bool]:
-        level = player_data.get("level", 1)
-        sword_tier = player_data.get("sword_tier", 1)
-        pet_mult = get_pet_combat_bonus(self.user_id)
-
-        base_dmg = (18 + (level * 4) + (sword_tier * 22)) * pet_mult
-        is_crit = random.random() < 0.20
-        dmg = int(base_dmg * random.uniform(0.85, 1.15) * (1.6 if is_crit else 1.0))
-        return max(5, dmg), is_crit
-
-    def _calculate_enemy_damage(self, player_data: dict, guarding: bool = False) -> int:
-        armor_tier = player_data.get("armor_tier", 1)
-        reduction = min(0.60, armor_tier * 0.05)
+        potions = sum(inv.get(k, 0) for k in HEALING_POTIONS)
+        sword_tier = player_data.get("sword_tier",
