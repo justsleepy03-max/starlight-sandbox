@@ -10,11 +10,26 @@ DATA_DIR = "/app/data"
 PETS_FILE = os.path.join(DATA_DIR, "pets.json")
 
 HEALING_POTIONS = {
+    "minor hp bottle": {
+        "name": "Minor Hp Bottle",
+        "pct": 0.25,
+        "min_heal": 25,
+        "desc": "Restores 25% Max HP (min 25)",
+        "aliases": ["minor hp bottle", "minor_hp_bottle", "minor potion"],
+    },
+    "greater hp bottle": {
+        "name": "Greater Hp Bottle",
+        "pct": 0.65,
+        "min_heal": 75,
+        "desc": "Restores 65% Max HP (min 75)",
+        "aliases": ["greater hp bottle", "greater_hp_bottle", "greater potion"],
+    },
     "life potion": {
         "name": "Life Potion",
         "pct": 0.50,
         "min_heal": 35,
         "desc": "Restores 50% Max HP (min 35)",
+        "aliases": ["life potion", "life_potion", "potion"],
     },
 }
 
@@ -115,6 +130,65 @@ def get_pet_combat_bonus(user_id: str) -> float:
         return 1.0
 
 
+def _find_matching_key(mapping: dict, aliases: list[str]) -> str | None:
+    if not isinstance(mapping, dict):
+        return None
+    lowered = {str(k).lower(): k for k in mapping.keys()}
+    for alias in aliases:
+        found = lowered.get(alias.lower())
+        if found is not None:
+            return found
+    return None
+
+
+def get_potion_count(player_data: dict, potion_key: str) -> int:
+    meta = HEALING_POTIONS.get(potion_key, {})
+    aliases = meta.get("aliases", [potion_key])
+    total = 0
+
+    inv = player_data.get("inventory", {})
+    matched_inv = _find_matching_key(inv, aliases)
+    if matched_inv is not None:
+        total += max(0, int(inv.get(matched_inv, 0) or 0))
+
+    matched_root = _find_matching_key(player_data, aliases)
+    if matched_root is not None and matched_root != "inventory":
+        total += max(0, int(player_data.get(matched_root, 0) or 0))
+
+    return total
+
+
+def get_owned_potions(player_data: dict) -> list[tuple[str, int]]:
+    owned = []
+    for key in HEALING_POTIONS:
+        qty = get_potion_count(player_data, key)
+        if qty > 0:
+            owned.append((key, qty))
+    return owned
+
+
+def consume_potion(player_data: dict, potion_key: str) -> bool:
+    meta = HEALING_POTIONS.get(potion_key, {})
+    aliases = meta.get("aliases", [potion_key])
+
+    inv = player_data.setdefault("inventory", {})
+    matched_inv = _find_matching_key(inv, aliases)
+    if matched_inv is not None and int(inv.get(matched_inv, 0) or 0) > 0:
+        inv[matched_inv] = int(inv[matched_inv]) - 1
+        if inv[matched_inv] <= 0:
+            del inv[matched_inv]
+        return True
+
+    matched_root = _find_matching_key(player_data, aliases)
+    if matched_root is not None and int(player_data.get(matched_root, 0) or 0) > 0:
+        player_data[matched_root] = int(player_data[matched_root]) - 1
+        if player_data[matched_root] <= 0:
+            del player_data[matched_root]
+        return True
+
+    return False
+
+
 class PotionSelect(discord.ui.Select):
     def __init__(self, combat_view, main_message, owned_potions):
         self.combat_view = combat_view
@@ -135,18 +209,13 @@ class PotionSelect(discord.ui.Select):
         key = self.values[0]
         meta = HEALING_POTIONS[key]
         player_data = get_player(self.combat_view.user_id)
-        inv = player_data.setdefault("inventory", {})
 
-        if inv.get(key, 0) < 1:
+        if not consume_potion(player_data, key):
             await interaction.response.edit_message(
                 content=f"❌ You don't have any **{meta['name']}** left in your bag!",
                 view=None
             )
             return
-
-        inv[key] -= 1
-        if inv[key] <= 0:
-            del inv[key]
 
         max_hp = player_data.get("max_hp", 100)
         cur_hp = player_data.get("hp", max_hp)
@@ -198,8 +267,7 @@ class DungeonCombatView(discord.ui.View):
     def build_combat_embed(self, player_data: dict, status_color=discord.Color.red()) -> discord.Embed:
         p_max_hp = player_data.get("max_hp", 100)
         p_hp = max(0, player_data.get("hp", p_max_hp))
-        inv = player_data.get("inventory", {})
-        potions = sum(inv.get(k, 0) for k in HEALING_POTIONS)
+        potions = sum(qty for _, qty in get_owned_potions(player_data))
         sword_tier = player_data.get("sword_tier", 1)
         armor_tier = player_data.get("armor_tier", 1)
 
@@ -218,7 +286,7 @@ class DungeonCombatView(discord.ui.View):
             name="🛡️ Your Status",
             value=f"❤️ **HP:** {p_hp:,} / {p_max_hp:,}\n⚔️ **Sword:** Tier {sword_tier} | 🛡️ **Armor:** Tier {armor_tier}\n🧪 **Potions:** {potions}",
             inline=True
-       )
+        )
         recent_logs = "\n".join(self.combat_log[-4:])
         embed.add_field(name="📜 Combat Log", value=recent_logs, inline=False)
         embed.set_footer(text=f"Starlight 100-Floor Spire ({format_ng_label(self.ng_tier)}) • Choose your action below")
@@ -389,8 +457,7 @@ class DungeonCombatView(discord.ui.View):
     @discord.ui.button(label="🧪 Potions", style=discord.ButtonStyle.success)
     async def potion_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         player_data = get_player(self.user_id)
-        inv = player_data.get("inventory", {})
-        owned = [(key, inv[key]) for key in HEALING_POTIONS if inv.get(key, 0) > 0]
+        owned = get_owned_potions(player_data)
 
         if not owned:
             await interaction.response.send_message(
@@ -410,6 +477,8 @@ class DungeonCombatView(discord.ui.View):
             color=discord.Color.light_grey()
         )
         await interaction.response.edit_message(embed=embed, view=None)
+
+
 class DungeonsCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -447,14 +516,15 @@ class DungeonsCog(commands.Cog):
 
         if is_boss:
             inv = player_data.setdefault("inventory", {})
-            if inv.get("dungeon key", 0) < 1:
+            key_name = _find_matching_key(inv, ["dungeon key", "dungeon_key"])
+            if key_name is None or int(inv.get(key_name, 0) or 0) < 1:
                 return await interaction.response.send_message(
                     f"🔑 **Floor {target_floor}** is a **Boss Room** and requires **1x Dungeon Key**! Buy one in `/shop` or earn them from quests.",
                     ephemeral=True
                 )
-            inv["dungeon key"] -= 1
-            if inv["dungeon key"] <= 0:
-                del inv["dungeon key"]
+            inv[key_name] = int(inv[key_name]) - 1
+            if inv[key_name] <= 0:
+                del inv[key_name]
             update_player(uid, player_data)
 
         mults = get_ng_multipliers(ng_tier)
