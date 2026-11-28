@@ -217,7 +217,8 @@ class DungeonCombatView(discord.ui.View):
         embed.add_field(
             name="🛡️ Your Status",
             value=f"❤️ **HP:** {p_hp:,} / {p_max_hp:,}\n⚔️ **Sword:** Tier {sword_tier} | 🛡️ **Armor:** Tier {armor_tier}\n🧪 **Potions:** {potions}",
-            inline=Truerecent_logs = "\n".join(self.combat_log[-4:])
+            inline=True
+            recent_logs = "\n".join(self.combat_log[-4:])
         embed.add_field(name="📜 Combat Log", value=recent_logs, inline=False)
         embed.set_footer(text=f"Starlight 100-Floor Spire ({format_ng_label(self.ng_tier)}) • Choose your action below")
         return embed
