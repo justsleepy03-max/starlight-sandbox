@@ -580,8 +580,3 @@ class DungeonCombatView(discord.ui.View):
 
 async def setup(bot):
     await bot.add_cog(DungeonsCog(bot))
-        )
-        recent_logs = "\n".join(self.combat_log[-4:])
-        embed.add_field(name="📜 Combat Log", value=recent_logs, inline=False)
-        embed.set_footer(text=f"Starlight 100-Floor Spire ({format_ng_label(self.ng_tier)}) • Choose your action below")
-        return embed
